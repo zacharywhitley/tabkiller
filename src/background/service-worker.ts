@@ -24,6 +24,7 @@ import {
   WindowEvent,
   TabKillerError
 } from '../shared/types';
+import { initializeDatabaseIntegration, getDatabaseIntegration } from '../database/integration';
 
 class BackgroundService {
   private state: BackgroundState;
@@ -54,6 +55,15 @@ class BackgroundService {
       // Load settings and state
       await this.loadSettings();
       await this.loadState();
+
+      // Initialize database integration
+      try {
+        await initializeDatabaseIntegration(this.state.settings);
+        console.log('Database integration initialized');
+      } catch (error) {
+        console.warn('Database integration failed:', error);
+        // Continue without database if it fails
+      }
       
       // Set up event listeners
       this.setupEventListeners();
@@ -134,6 +144,14 @@ class BackgroundService {
       };
 
       await this.processTabEvent(event);
+
+      // Store in graph database
+      try {
+        const dbIntegration = getDatabaseIntegration();
+        await dbIntegration.handleTabCreated(tabInfo);
+      } catch (error) {
+        console.warn('Failed to store tab in database:', error);
+      }
     } catch (error) {
       console.error('Error handling tab created:', error);
     }
@@ -178,6 +196,14 @@ class BackgroundService {
         };
 
         await this.trackNavigation(navigationEvent);
+
+        // Store navigation in graph database
+        try {
+          const dbIntegration = getDatabaseIntegration();
+          await dbIntegration.handleNavigation(navigationEvent);
+        } catch (error) {
+          console.warn('Failed to store navigation in database:', error);
+        }
       }
 
       const event: TabEvent = {
@@ -330,6 +356,23 @@ class BackgroundService {
           
         case 'ping':
           return { success: true, data: 'pong' };
+
+        case 'get-dashboard-data':
+          const dashboardData = await this.getDashboardData();
+          return { success: true, data: dashboardData };
+
+        case 'search-history':
+          const searchTerm = message.payload as string;
+          const searchResults = await this.searchHistory(searchTerm);
+          return { success: true, data: searchResults };
+
+        case 'get-browsing-patterns':
+          const patterns = await this.getBrowsingPatterns();
+          return { success: true, data: patterns };
+
+        case 'get-database-status':
+          const dbStatus = await this.getDatabaseStatus();
+          return { success: true, data: dbStatus };
           
         default:
           throw new TabKillerError(
@@ -401,6 +444,14 @@ class BackgroundService {
 
     this.state.currentSession = session;
     await this.saveSession(session);
+
+    // Store session in graph database
+    try {
+      const dbIntegration = getDatabaseIntegration();
+      await dbIntegration.createSession(session);
+    } catch (error) {
+      console.warn('Failed to store session in database:', error);
+    }
     
     return session;
   }
@@ -528,6 +579,69 @@ class BackgroundService {
   private async performUpdateMigration(previousVersion?: string): Promise<void> {
     // Migration logic for updates
     console.log('Performing update migration from:', previousVersion);
+  }
+
+  /**
+   * Get dashboard data from graph database
+   */
+  private async getDashboardData(): Promise<any> {
+    try {
+      const dbIntegration = getDatabaseIntegration();
+      return await dbIntegration.getDashboardData();
+    } catch (error) {
+      console.warn('Failed to get dashboard data:', error);
+      return {
+        totalPages: 0,
+        totalSessions: 0,
+        totalTime: 0,
+        topDomains: [],
+        recentPages: [],
+        currentSession: null
+      };
+    }
+  }
+
+  /**
+   * Search browsing history
+   */
+  private async searchHistory(searchTerm: string): Promise<any> {
+    try {
+      const dbIntegration = getDatabaseIntegration();
+      return await dbIntegration.searchHistory(searchTerm);
+    } catch (error) {
+      console.warn('Failed to search history:', error);
+      return { pages: [], sessions: [] };
+    }
+  }
+
+  /**
+   * Get browsing patterns
+   */
+  private async getBrowsingPatterns(): Promise<any[]> {
+    try {
+      const dbIntegration = getDatabaseIntegration();
+      return await dbIntegration.getBrowsingPatterns();
+    } catch (error) {
+      console.warn('Failed to get browsing patterns:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get database status
+   */
+  private async getDatabaseStatus(): Promise<any> {
+    try {
+      const dbIntegration = getDatabaseIntegration();
+      return await dbIntegration.getHealthStatus();
+    } catch (error) {
+      console.warn('Failed to get database status:', error);
+      return {
+        initialized: false,
+        connected: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
   }
 }
 

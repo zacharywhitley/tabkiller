@@ -503,3 +503,306 @@ export interface TrackerState {
   idleState: boolean;
   lastIdleTime?: number;
 }
+
+// UI-specific types for enhanced interface components
+
+export interface UITheme {
+  name: string;
+  isDark: boolean;
+  colors: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    background: string;
+    surface: string;
+    text: string;
+    textSecondary: string;
+    border: string;
+    success: string;
+    warning: string;
+    error: string;
+  };
+  spacing: {
+    xs: string;
+    sm: string;
+    md: string;
+    lg: string;
+    xl: string;
+  };
+  borderRadius: string;
+  shadows: {
+    sm: string;
+    md: string;
+    lg: string;
+  };
+}
+
+export interface SessionTag {
+  id: string;
+  name: string;
+  color?: string;
+  description?: string;
+  createdAt: number;
+  usageCount: number;
+  parent?: string;
+  children?: string[];
+}
+
+export interface TagHierarchy {
+  tag: SessionTag;
+  level: number;
+  path: string[];
+  hasChildren: boolean;
+}
+
+export interface SessionFilter {
+  tags?: string[];
+  dateRange?: { start: number; end: number };
+  domains?: string[];
+  searchQuery?: string;
+  tabCount?: { min: number; max: number };
+  duration?: { min: number; max: number };
+  sortBy?: 'createdAt' | 'updatedAt' | 'tabCount' | 'duration' | 'tag';
+  sortOrder?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+}
+
+export interface HistoryTimelineItem {
+  id: string;
+  type: 'session' | 'navigation' | 'tab_event' | 'boundary';
+  timestamp: number;
+  title: string;
+  description?: string;
+  icon?: string;
+  metadata: {
+    sessionId?: string;
+    tabId?: number;
+    url?: string;
+    domain?: string;
+    duration?: number;
+    tabCount?: number;
+    tags?: string[];
+  };
+}
+
+export interface TimelineGroup {
+  date: string;
+  items: HistoryTimelineItem[];
+  stats: {
+    totalSessions: number;
+    totalTabs: number;
+    totalTime: number;
+    uniqueDomains: number;
+  };
+}
+
+export interface SearchResult {
+  type: 'session' | 'page' | 'tab' | 'event';
+  id: string;
+  title: string;
+  description: string;
+  url?: string;
+  timestamp: number;
+  relevanceScore: number;
+  metadata: {
+    sessionId?: string;
+    sessionTag?: string;
+    domain?: string;
+    tabId?: number;
+    context?: string;
+    highlights?: string[];
+  };
+}
+
+export interface ExportOptions {
+  format: 'json' | 'csv' | 'html' | 'pdf';
+  includeContent: boolean;
+  includeTabs: boolean;
+  includeSessions: boolean;
+  includeHistory: boolean;
+  dateRange?: { start: number; end: number };
+  sessionIds?: string[];
+  compressed: boolean;
+  encrypted: boolean;
+}
+
+export interface ImportOptions {
+  format: 'json' | 'csv' | 'html';
+  mergeStrategy: 'replace' | 'merge' | 'skip_existing';
+  validateData: boolean;
+  createBackup: boolean;
+}
+
+export interface UISettings {
+  theme: 'light' | 'dark' | 'auto';
+  compactMode: boolean;
+  showPreviewPanels: boolean;
+  animationsEnabled: boolean;
+  showTooltips: boolean;
+  defaultView: 'sessions' | 'timeline' | 'analytics';
+  itemsPerPage: number;
+  autoRefreshInterval: number;
+  shortcuts: Record<string, string>;
+}
+
+export interface OptionsPageSection {
+  id: string;
+  title: string;
+  icon?: string;
+  component: string;
+  visible: boolean;
+  order: number;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  types: {
+    sessionReminders: boolean;
+    syncStatus: boolean;
+    storageWarnings: boolean;
+    errorAlerts: boolean;
+  };
+  frequency: 'immediate' | 'batched' | 'daily';
+  quietHours: {
+    enabled: boolean;
+    start: string;
+    end: string;
+  };
+}
+
+export interface PopupState {
+  currentSession?: BrowsingSession;
+  recentSessions: BrowsingSession[];
+  stats: {
+    activeTabs: number;
+    totalSessions: number;
+    todaysPages: number;
+    storageUsed: number;
+  };
+  syncStatus: {
+    enabled: boolean;
+    lastSync: number;
+    inProgress: boolean;
+    error?: string;
+  };
+  quickActions: QuickAction[];
+}
+
+export interface QuickAction {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;
+  enabled: boolean;
+  shortcut?: string;
+  action: () => void;
+}
+
+export interface SessionAnalytics {
+  sessionId: string;
+  totalTime: number;
+  activeTime: number;
+  tabSwitches: number;
+  uniqueDomains: string[];
+  topDomains: Array<{ domain: string; time: number; percentage: number }>;
+  productivityScore: number;
+  focusPeriods: TimeRange[];
+  distractionEvents: number;
+  patterns: NavigationPattern[];
+}
+
+export interface BrowsingInsights {
+  timeRange: { start: number; end: number };
+  totalTime: number;
+  sessionsCount: number;
+  tabsCount: number;
+  pagesVisited: number;
+  uniqueDomains: number;
+  averageSessionDuration: number;
+  peakActivityHours: number[];
+  topDomains: Array<{ domain: string; time: number; visits: number }>;
+  productivityTrends: Array<{ date: string; score: number }>;
+  sessionDistribution: Array<{ tag: string; count: number; time: number }>;
+}
+
+export interface DataVisualizationConfig {
+  type: 'timeline' | 'heatmap' | 'graph' | 'chart' | 'stats';
+  title: string;
+  data: any;
+  options: {
+    interactive: boolean;
+    showLabels: boolean;
+    showTooltips: boolean;
+    colorScheme: string[];
+    dimensions: { width: number; height: number };
+  };
+}
+
+export interface AccessibilityOptions {
+  highContrast: boolean;
+  reducedMotion: boolean;
+  screenReaderSupport: boolean;
+  keyboardNavigation: boolean;
+  fontSize: 'small' | 'medium' | 'large' | 'extra-large';
+  focusIndicators: boolean;
+}
+
+export interface ComponentState {
+  loading: boolean;
+  error?: string;
+  lastUpdated?: number;
+  retryCount: number;
+  isVisible: boolean;
+}
+
+export interface Modal {
+  id: string;
+  type: 'session' | 'settings' | 'export' | 'import' | 'confirm' | 'info';
+  title: string;
+  content: string | React.ComponentType;
+  size: 'small' | 'medium' | 'large' | 'fullscreen';
+  closable: boolean;
+  actions: ModalAction[];
+}
+
+export interface ModalAction {
+  id: string;
+  label: string;
+  type: 'primary' | 'secondary' | 'danger';
+  action: () => void | Promise<void>;
+  disabled?: boolean;
+}
+
+export interface Toast {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title: string;
+  message: string;
+  duration: number;
+  persistent: boolean;
+  actions?: ToastAction[];
+}
+
+export interface ToastAction {
+  label: string;
+  action: () => void;
+}
+
+export interface ContextMenuOption {
+  id: string;
+  label: string;
+  icon?: string;
+  action: () => void;
+  disabled?: boolean;
+  separator?: boolean;
+}
+
+export interface KeyboardShortcut {
+  id: string;
+  combination: string[];
+  description: string;
+  action: () => void;
+  context: 'global' | 'popup' | 'options' | 'timeline';
+  enabled: boolean;
+}

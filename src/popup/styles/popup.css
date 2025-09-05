@@ -476,9 +476,129 @@ body {
   }
 }
 
+/* Search Section */
+.tk-popup__section--search {
+  margin-bottom: var(--tk-spacing-md);
+}
+
+.tk-search-container {
+  width: 100%;
+}
+
+/* Session Info Enhancements */
+.tk-session-info__name {
+  font-weight: var(--tk-font-weight-semibold);
+  color: var(--tk-accent-color);
+  display: block;
+  margin-bottom: var(--tk-spacing-xs);
+}
+
+.tk-session-info__tags {
+  font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-secondary);
+  display: block;
+  margin-bottom: var(--tk-spacing-xs);
+}
+
+/* Tag Manager Container */
+.tk-tag-manager-container {
+  margin: var(--tk-spacing-sm) 0;
+}
+
+/* Session Analytics */
+.tk-session-analytics {
+  background-color: var(--tk-bg-secondary);
+  padding: var(--tk-spacing-md);
+  border-radius: var(--tk-border-radius);
+  border: 1px solid var(--tk-border-color);
+}
+
+.tk-analytics-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--tk-spacing-xs) 0;
+  border-bottom: 1px solid var(--tk-border-color);
+}
+
+.tk-analytics-item:last-child {
+  border-bottom: none;
+}
+
+.tk-analytics-label {
+  font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-secondary);
+  font-weight: var(--tk-font-weight-medium);
+}
+
+.tk-analytics-value {
+  font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-primary);
+  font-weight: var(--tk-font-weight-semibold);
+}
+
+/* Form Checkbox */
+.tk-form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--tk-spacing-sm);
+  cursor: pointer;
+  font-size: var(--tk-font-size-sm);
+  color: var(--tk-text-primary);
+  margin: var(--tk-spacing-sm) 0;
+}
+
+.tk-form-checkbox input[type="checkbox"] {
+  display: none;
+}
+
+.tk-form-checkbox__checkmark {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--tk-border-color);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease-in-out;
+  flex-shrink: 0;
+}
+
+.tk-form-checkbox input[type="checkbox"]:checked + .tk-form-checkbox__checkmark {
+  background-color: var(--tk-accent-color);
+  border-color: var(--tk-accent-color);
+}
+
+.tk-form-checkbox input[type="checkbox"]:checked + .tk-form-checkbox__checkmark::after {
+  content: '✓';
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.tk-form-checkbox:hover .tk-form-checkbox__checkmark {
+  border-color: var(--tk-accent-color);
+}
+
+.tk-form-checkbox__label {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Modal Footer */
+.tk-modal__footer {
+  display: flex;
+  gap: var(--tk-spacing-sm);
+  justify-content: flex-end;
+  padding: var(--tk-spacing-lg);
+  border-top: 1px solid var(--tk-border-color);
+  background-color: var(--tk-bg-secondary);
+}
+
 /* Accessibility */
 .tk-popup__button:focus,
-.tk-form-input:focus {
+.tk-form-input:focus,
+.tk-form-checkbox:focus-within .tk-form-checkbox__checkmark {
   outline: 2px solid var(--tk-accent-color);
   outline-offset: 2px;
 }

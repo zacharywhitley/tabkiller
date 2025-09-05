@@ -17,6 +17,13 @@
         </header>
 
         <main class="tk-popup__content">
+            <!-- Search Section -->
+            <section class="tk-popup__section tk-popup__section--search">
+                <div class="tk-search-container" id="search-container">
+                    <!-- Search component will be inserted here -->
+                </div>
+            </section>
+
             <!-- Current Session Section -->
             <section class="tk-popup__section">
                 <h2 class="tk-popup__section-title">Current Session</h2>
@@ -31,6 +38,9 @@
                     </button>
                     <button class="tk-popup__button tk-popup__button--secondary" id="save-session-btn" disabled>
                         Save Session
+                    </button>
+                    <button class="tk-popup__button tk-popup__button--outline" id="tag-session-btn" disabled>
+                        Add Tags
                     </button>
                 </div>
             </section>
@@ -109,15 +119,21 @@
             </header>
             <form class="tk-modal__form" id="session-form">
                 <div class="tk-form-group">
-                    <label class="tk-form-label" for="session-tag">Session Tag</label>
+                    <label class="tk-form-label" for="session-name">Session Name</label>
                     <input 
                         class="tk-form-input" 
                         type="text" 
-                        id="session-tag" 
-                        name="tag" 
-                        placeholder="e.g., research, work, shopping"
+                        id="session-name" 
+                        name="name" 
+                        placeholder="e.g., Research Project Alpha"
                         required
                     >
+                </div>
+                <div class="tk-form-group">
+                    <label class="tk-form-label">Tags</label>
+                    <div class="tk-tag-manager-container" id="session-tags">
+                        <!-- TagManager component will be inserted here -->
+                    </div>
                 </div>
                 <div class="tk-form-group">
                     <label class="tk-form-label" for="session-notes">Notes (optional)</label>
@@ -125,9 +141,16 @@
                         class="tk-form-input tk-form-input--textarea" 
                         id="session-notes" 
                         name="notes" 
-                        placeholder="Brief description of this session..."
+                        placeholder="Brief description of this session's purpose..."
                         rows="3"
                     ></textarea>
+                </div>
+                <div class="tk-form-group">
+                    <label class="tk-form-checkbox">
+                        <input type="checkbox" id="session-private" name="private">
+                        <span class="tk-form-checkbox__checkmark"></span>
+                        <span class="tk-form-checkbox__label">Mark as private (exclude from sync)</span>
+                    </label>
                 </div>
                 <div class="tk-form-actions">
                     <button type="button" class="tk-popup__button tk-popup__button--secondary" id="cancel-session-btn">
@@ -138,6 +161,50 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Tag Management Modal -->
+    <div class="tk-modal" id="tag-modal" style="display: none;">
+        <div class="tk-modal__overlay" id="tag-modal-overlay"></div>
+        <div class="tk-modal__content">
+            <header class="tk-modal__header">
+                <h3 class="tk-modal__title">Manage Session Tags</h3>
+                <button class="tk-modal__close" id="tag-modal-close-btn">&times;</button>
+            </header>
+            <div class="tk-modal__body">
+                <div class="tk-form-group">
+                    <label class="tk-form-label">Current Session Tags</label>
+                    <div class="tk-tag-manager-container" id="current-session-tags">
+                        <!-- TagManager component will be inserted here -->
+                    </div>
+                </div>
+                <div class="tk-form-group">
+                    <label class="tk-form-label">Session Analytics</label>
+                    <div class="tk-session-analytics" id="session-analytics">
+                        <div class="tk-analytics-item">
+                            <span class="tk-analytics-label">Duration:</span>
+                            <span class="tk-analytics-value" id="analytics-duration">--</span>
+                        </div>
+                        <div class="tk-analytics-item">
+                            <span class="tk-analytics-label">Pages visited:</span>
+                            <span class="tk-analytics-value" id="analytics-pages">--</span>
+                        </div>
+                        <div class="tk-analytics-item">
+                            <span class="tk-analytics-label">Domains:</span>
+                            <span class="tk-analytics-value" id="analytics-domains">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="tk-modal__footer">
+                <button type="button" class="tk-popup__button tk-popup__button--secondary" id="tag-modal-cancel-btn">
+                    Cancel
+                </button>
+                <button type="button" class="tk-popup__button tk-popup__button--primary" id="tag-modal-save-btn">
+                    Save Tags
+                </button>
+            </div>
         </div>
     </div>
 

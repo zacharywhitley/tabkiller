@@ -30,6 +30,8 @@ import { PrivacyFilter } from '../utils/PrivacyFilter';
 import { SessionDetector } from '../utils/SessionDetector';
 import { AnalyticsEngine } from '../utils/AnalyticsEngine';
 import { initializeDatabaseIntegration, getDatabaseIntegration } from '../database/integration';
+import { performanceMonitor } from '../performance/PerformanceMonitor';
+import { memoryManager } from '../performance/MemoryManager';
 
 class EnhancedBackgroundService {
   private state: BackgroundState;
@@ -60,18 +62,33 @@ class EnhancedBackgroundService {
    * Initialize the enhanced background service
    */
   async initialize(): Promise<void> {
+    const initStartTime = performance.now();
+    
     try {
+      performanceMonitor.startBackgroundTask('service-worker-init');
       console.log(`TabKiller initializing on ${this.currentBrowser}...`);
       
-      // Load settings and state
+      // Initialize performance monitoring first
+      await performanceMonitor.initialize();
+      console.log('Performance monitoring initialized');
+      
+      // Load settings and state with performance tracking
+      performanceMonitor.startQuery('load-settings');
       await this.loadSettings();
+      performanceMonitor.endQuery('load-settings');
+      
+      performanceMonitor.startQuery('load-state');
       await this.loadState();
+      performanceMonitor.endQuery('load-state');
 
-      // Initialize database integration
+      // Initialize database integration with performance tracking
       try {
+        performanceMonitor.startQuery('database-init');
         await initializeDatabaseIntegration(this.state.settings);
+        performanceMonitor.endQuery('database-init');
         console.log('Database integration initialized');
       } catch (error) {
+        performanceMonitor.endQuery('database-init');
         console.warn('Database integration failed:', error);
         // Continue without database if it fails
       }
@@ -79,14 +96,28 @@ class EnhancedBackgroundService {
       // Initialize enhanced tracking system
       await this.initializeTrackingSystem();
       
-      // Set up event listeners
+      // Set up event listeners with memory management
       this.setupEventListeners();
       
       // Initialize current tabs
+      performanceMonitor.startQuery('init-current-tabs');
       await this.initializeCurrentTabs();
+      performanceMonitor.endQuery('init-current-tabs');
       
-      console.log('TabKiller background service initialized successfully');
+      // Record startup performance
+      const initDuration = performance.now() - initStartTime;
+      performanceMonitor.endBackgroundTask('service-worker-init');
+      
+      console.log(`TabKiller background service initialized successfully in ${initDuration.toFixed(2)}ms`);
+      
+      // Check performance benchmarks
+      const performanceSummary = performanceMonitor.getPerformanceSummary();
+      if (performanceSummary.status !== 'good') {
+        console.warn('Performance issues detected during initialization:', performanceSummary.issues);
+      }
+      
     } catch (error) {
+      performanceMonitor.endBackgroundTask('service-worker-init');
       console.error('Failed to initialize TabKiller background service:', error);
       throw new TabKillerError(
         'INIT_FAILED',

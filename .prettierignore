@@ -1,0 +1,26 @@
+# Build outputs
+build/
+dist/
+*.min.js
+*.min.css
+
+# Dependencies
+node_modules/
+
+# Generated files
+*.d.ts
+
+# Logs
+*.log
+
+# IDE/Editor files
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Documentation that shouldn't be auto-formatted
+CHANGELOG.md
+LICENSE

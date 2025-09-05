@@ -1,0 +1,60 @@
+{
+  "timestamp": "2025-09-05T10:55:18.264Z",
+  "score": 50,
+  "duration": 3404,
+  "benchmarks": {
+    "maxStartupTime": 100,
+    "maxQueryTime": 50,
+    "maxMemoryUsage": 52428800,
+    "maxCpuUtilization": 5,
+    "maxSyncDuration": 5000,
+    "minCacheHitRate": 70
+  },
+  "results": [
+    {
+      "name": "TypeScript Compilation",
+      "passed": false,
+      "error": "Compilation failed"
+    },
+    {
+      "name": "Development Build Performance",
+      "passed": false,
+      "error": "Build failed"
+    },
+    {
+      "name": "Bundle Size Optimization",
+      "passed": true,
+      "actualValue": 1636,
+      "expectedValue": 5120,
+      "unit": "KB"
+    },
+    {
+      "name": "Memory Management Features",
+      "passed": false,
+      "actualValue": 16,
+      "expectedValue": 17
+    },
+    {
+      "name": "Performance Monitoring Integration",
+      "passed": true,
+      "actualValue": 12,
+      "expectedValue": 10
+    },
+    {
+      "name": "Browser Compatibility",
+      "passed": true,
+      "actualValue": 9,
+      "expectedValue": 7
+    }
+  ],
+  "summary": {
+    "passed": 3,
+    "failed": 3,
+    "total": 6
+  },
+  "recommendations": [
+    "Fix TypeScript compilation errors before proceeding",
+    "Optimize build configuration for better performance",
+    "Implement more aggressive memory management and garbage collection"
+  ]
+}

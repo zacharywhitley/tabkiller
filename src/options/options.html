@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TabKiller Settings</title>
+    <link rel="stylesheet" href="../popup/styles/popup.css">
+    <link rel="stylesheet" href="../components/ui/styles.css">
+    <link rel="stylesheet" href="styles/options.css">
+</head>
+<body>
+    <div class="tk-options">
+        <!-- Header -->
+        <header class="tk-options__header">
+            <div class="tk-options__header-content">
+                <h1 class="tk-options__title">TabKiller Settings</h1>
+                <div class="tk-options__version">
+                    <span id="version-info">v0.1.0</span>
+                    <span class="tk-options__browser" id="browser-info">Chrome</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="tk-options__nav">
+            <div class="tk-options__nav-content">
+                <button class="tk-options__nav-item tk-options__nav-item--active" data-section="general">
+                    <span class="tk-options__nav-icon">⚙️</span>
+                    <span class="tk-options__nav-label">General</span>
+                </button>
+                <button class="tk-options__nav-item" data-section="privacy">
+                    <span class="tk-options__nav-icon">🔒</span>
+                    <span class="tk-options__nav-label">Privacy</span>
+                </button>
+                <button class="tk-options__nav-item" data-section="sync">
+                    <span class="tk-options__nav-icon">🔄</span>
+                    <span class="tk-options__nav-label">Sync</span>
+                </button>
+                <button class="tk-options__nav-item" data-section="data">
+                    <span class="tk-options__nav-icon">💾</span>
+                    <span class="tk-options__nav-label">Data</span>
+                </button>
+                <button class="tk-options__nav-item" data-section="advanced">
+                    <span class="tk-options__nav-icon">🔧</span>
+                    <span class="tk-options__nav-label">Advanced</span>
+                </button>
+                <button class="tk-options__nav-item" data-section="about">
+                    <span class="tk-options__nav-icon">ℹ️</span>
+                    <span class="tk-options__nav-label">About</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="tk-options__main">
+            <!-- General Settings -->
+            <section class="tk-options__section" id="section-general">
+                <div class="tk-options__section-header">
+                    <h2 class="tk-options__section-title">General Settings</h2>
+                    <p class="tk-options__section-description">Configure basic TabKiller behavior and preferences</p>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Session Management</h3>
+                    
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label">
+                            <input type="checkbox" class="tk-options__checkbox" id="auto-capture-enabled">
+                            <span class="tk-options__checkbox-custom"></span>
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Auto-capture sessions</span>
+                                <span class="tk-options__setting-description">Automatically detect and create new browsing sessions</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="capture-interval">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Capture interval</span>
+                                <span class="tk-options__setting-description">How often to save browsing activity (minutes)</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <input type="number" class="tk-options__input tk-options__input--small" 
+                                   id="capture-interval" min="1" max="60" value="5">
+                            <span class="tk-options__input-unit">minutes</span>
+                        </div>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="max-sessions">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Maximum sessions</span>
+                                <span class="tk-options__setting-description">Maximum number of sessions to keep (0 for unlimited)</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <input type="number" class="tk-options__input tk-options__input--small" 
+                                   id="max-sessions" min="0" max="1000" value="100">
+                        </div>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="default-tag">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Default session tag</span>
+                                <span class="tk-options__setting-description">Default tag for new sessions</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <input type="text" class="tk-options__input" 
+                                   id="default-tag" placeholder="e.g., work, research">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">User Interface</h3>
+                    
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="theme">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Theme</span>
+                                <span class="tk-options__setting-description">Choose your preferred color scheme</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <select class="tk-options__select" id="theme">
+                                <option value="auto">Auto (system)</option>
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label">
+                            <input type="checkbox" class="tk-options__checkbox" id="compact-mode">
+                            <span class="tk-options__checkbox-custom"></span>
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Compact mode</span>
+                                <span class="tk-options__setting-description">Use smaller UI elements to save space</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label">
+                            <input type="checkbox" class="tk-options__checkbox" id="animations-enabled">
+                            <span class="tk-options__checkbox-custom"></span>
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Animations</span>
+                                <span class="tk-options__setting-description">Enable smooth transitions and animations</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Privacy Settings -->
+            <section class="tk-options__section" id="section-privacy" style="display: none;">
+                <div class="tk-options__section-header">
+                    <h2 class="tk-options__section-title">Privacy & Security</h2>
+                    <p class="tk-options__section-description">Control what data is collected and how it's protected</p>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Data Collection</h3>
+                    
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="privacy-mode">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Privacy mode</span>
+                                <span class="tk-options__setting-description">How much browsing data to collect</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <select class="tk-options__select" id="privacy-mode">
+                                <option value="minimal">Minimal (URLs and titles only)</option>
+                                <option value="moderate">Moderate (+ form data, scroll position)</option>
+                                <option value="strict">Strict (full page content and interactions)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label">
+                            <input type="checkbox" class="tk-options__checkbox" id="exclude-incognito">
+                            <span class="tk-options__checkbox-custom"></span>
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Exclude incognito/private browsing</span>
+                                <span class="tk-options__setting-description">Don't track activity in private browsing modes</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="excluded-domains">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Excluded domains</span>
+                                <span class="tk-options__setting-description">Domains to never track (one per line)</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <textarea class="tk-options__textarea" id="excluded-domains" 
+                                      placeholder="banking-site.com&#10;private-site.com&#10;sensitive-domain.org"
+                                      rows="4"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Encryption</h3>
+                    
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label">
+                            <input type="checkbox" class="tk-options__checkbox" id="encryption-enabled">
+                            <span class="tk-options__checkbox-custom"></span>
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Enable encryption</span>
+                                <span class="tk-options__setting-description">Encrypt all stored data with a master password</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="tk-options__setting" id="encryption-settings" style="display: none;">
+                        <div class="tk-options__encryption-panel">
+                            <div class="tk-options__setting-row">
+                                <label class="tk-options__setting-label" for="master-password">
+                                    <div class="tk-options__setting-content">
+                                        <span class="tk-options__setting-title">Master password</span>
+                                        <span class="tk-options__setting-description">Used to encrypt/decrypt your data</span>
+                                    </div>
+                                </label>
+                                <div class="tk-options__setting-control">
+                                    <input type="password" class="tk-options__input" id="master-password" 
+                                           placeholder="Enter a strong password">
+                                </div>
+                            </div>
+                            <div class="tk-options__setting-row">
+                                <label class="tk-options__setting-label" for="confirm-password">
+                                    <div class="tk-options__setting-content">
+                                        <span class="tk-options__setting-title">Confirm password</span>
+                                    </div>
+                                </label>
+                                <div class="tk-options__setting-control">
+                                    <input type="password" class="tk-options__input" id="confirm-password" 
+                                           placeholder="Confirm your password">
+                                </div>
+                            </div>
+                            <div class="tk-options__encryption-actions">
+                                <button class="tk-button tk-button--primary" id="set-password-btn">
+                                    Set Password
+                                </button>
+                                <button class="tk-button tk-button--secondary" id="export-key-btn">
+                                    Export Recovery Key
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sync Settings -->
+            <section class="tk-options__section" id="section-sync" style="display: none;">
+                <div class="tk-options__section-header">
+                    <h2 class="tk-options__section-title">Sync & Backup</h2>
+                    <p class="tk-options__section-description">Keep your data synchronized across devices</p>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Synchronization</h3>
+                    
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label">
+                            <input type="checkbox" class="tk-options__checkbox" id="sync-enabled">
+                            <span class="tk-options__checkbox-custom"></span>
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Enable sync</span>
+                                <span class="tk-options__setting-description">Sync your data across devices using SSB protocol</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="tk-options__sync-status" id="sync-status">
+                        <div class="tk-options__status-item">
+                            <span class="tk-options__status-label">Status:</span>
+                            <span class="tk-options__status-value tk-options__status-value--disconnected" id="sync-status-text">
+                                Disconnected
+                            </span>
+                        </div>
+                        <div class="tk-options__status-item">
+                            <span class="tk-options__status-label">Last sync:</span>
+                            <span class="tk-options__status-value" id="last-sync-time">Never</span>
+                        </div>
+                        <div class="tk-options__status-item">
+                            <span class="tk-options__status-label">Connected peers:</span>
+                            <span class="tk-options__status-value" id="connected-peers">0</span>
+                        </div>
+                    </div>
+
+                    <div class="tk-options__sync-actions">
+                        <button class="tk-button tk-button--primary" id="sync-now-btn" disabled>
+                            Sync Now
+                        </button>
+                        <button class="tk-button tk-button--secondary" id="manage-peers-btn" disabled>
+                            Manage Peers
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Data Management -->
+            <section class="tk-options__section" id="section-data" style="display: none;">
+                <div class="tk-options__section-header">
+                    <h2 class="tk-options__section-title">Data Management</h2>
+                    <p class="tk-options__section-description">Import, export, and manage your browsing data</p>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Storage</h3>
+                    
+                    <div class="tk-options__storage-info">
+                        <div class="tk-options__storage-item">
+                            <span class="tk-options__storage-label">Sessions:</span>
+                            <span class="tk-options__storage-value" id="sessions-count">0</span>
+                        </div>
+                        <div class="tk-options__storage-item">
+                            <span class="tk-options__storage-label">Pages:</span>
+                            <span class="tk-options__storage-value" id="pages-count">0</span>
+                        </div>
+                        <div class="tk-options__storage-item">
+                            <span class="tk-options__storage-label">Storage used:</span>
+                            <span class="tk-options__storage-value" id="storage-used">0 MB</span>
+                        </div>
+                    </div>
+
+                    <div class="tk-options__data-actions">
+                        <button class="tk-button tk-button--outline" id="cleanup-data-btn">
+                            Clean Up Old Data
+                        </button>
+                        <button class="tk-button tk-button--danger" id="clear-all-data-btn">
+                            Clear All Data
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Import & Export</h3>
+                    
+                    <div class="tk-options__export-section">
+                        <h4 class="tk-options__subsection-title">Export Data</h4>
+                        <div class="tk-options__export-options">
+                            <label class="tk-options__export-option">
+                                <input type="checkbox" class="tk-options__checkbox" id="export-sessions" checked>
+                                <span class="tk-options__checkbox-custom"></span>
+                                <span>Sessions and tags</span>
+                            </label>
+                            <label class="tk-options__export-option">
+                                <input type="checkbox" class="tk-options__checkbox" id="export-history" checked>
+                                <span class="tk-options__checkbox-custom"></span>
+                                <span>Browsing history</span>
+                            </label>
+                            <label class="tk-options__export-option">
+                                <input type="checkbox" class="tk-options__checkbox" id="export-settings">
+                                <span class="tk-options__checkbox-custom"></span>
+                                <span>Settings and preferences</span>
+                            </label>
+                        </div>
+                        <div class="tk-options__export-format">
+                            <label for="export-format">Format:</label>
+                            <select class="tk-options__select tk-options__select--small" id="export-format">
+                                <option value="json">JSON</option>
+                                <option value="csv">CSV</option>
+                                <option value="html">HTML Report</option>
+                            </select>
+                        </div>
+                        <button class="tk-button tk-button--primary" id="export-data-btn">
+                            Export Data
+                        </button>
+                    </div>
+
+                    <div class="tk-options__import-section">
+                        <h4 class="tk-options__subsection-title">Import Data</h4>
+                        <div class="tk-options__import-area" id="import-area">
+                            <div class="tk-options__import-placeholder">
+                                <span class="tk-options__import-icon">📄</span>
+                                <span class="tk-options__import-text">
+                                    Drop files here or <button class="tk-options__import-browse" id="browse-files">browse</button>
+                                </span>
+                            </div>
+                            <input type="file" class="tk-options__file-input" id="import-file" 
+                                   accept=".json,.csv" multiple style="display: none;">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Advanced Settings -->
+            <section class="tk-options__section" id="section-advanced" style="display: none;">
+                <div class="tk-options__section-header">
+                    <h2 class="tk-options__section-title">Advanced Settings</h2>
+                    <p class="tk-options__section-description">Advanced configuration for power users</p>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Performance</h3>
+                    
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="batch-size">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Event batch size</span>
+                                <span class="tk-options__setting-description">Number of events to process at once</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <input type="number" class="tk-options__input tk-options__input--small" 
+                                   id="batch-size" min="10" max="1000" value="100">
+                        </div>
+                    </div>
+
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label" for="memory-limit">
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Memory limit</span>
+                                <span class="tk-options__setting-description">Maximum events to keep in memory (MB)</span>
+                            </div>
+                        </label>
+                        <div class="tk-options__setting-control">
+                            <input type="number" class="tk-options__input tk-options__input--small" 
+                                   id="memory-limit" min="10" max="500" value="50">
+                            <span class="tk-options__input-unit">MB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tk-options__settings-group">
+                    <h3 class="tk-options__group-title">Debug</h3>
+                    
+                    <div class="tk-options__setting">
+                        <label class="tk-options__setting-label">
+                            <input type="checkbox" class="tk-options__checkbox" id="debug-logging">
+                            <span class="tk-options__checkbox-custom"></span>
+                            <div class="tk-options__setting-content">
+                                <span class="tk-options__setting-title">Debug logging</span>
+                                <span class="tk-options__setting-description">Enable detailed logging for troubleshooting</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="tk-options__debug-actions">
+                        <button class="tk-button tk-button--outline" id="view-logs-btn">
+                            View Logs
+                        </button>
+                        <button class="tk-button tk-button--outline" id="export-logs-btn">
+                            Export Logs
+                        </button>
+                        <button class="tk-button tk-button--secondary" id="reset-settings-btn">
+                            Reset All Settings
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- About Section -->
+            <section class="tk-options__section" id="section-about" style="display: none;">
+                <div class="tk-options__section-header">
+                    <h2 class="tk-options__section-title">About TabKiller</h2>
+                    <p class="tk-options__section-description">Version information and helpful resources</p>
+                </div>
+
+                <div class="tk-options__about-content">
+                    <div class="tk-options__about-info">
+                        <h3>TabKiller Browser Extension</h3>
+                        <p>A powerful browser extension for managing and organizing your browsing sessions with privacy-first data synchronization.</p>
+                        
+                        <div class="tk-options__version-info">
+                            <div class="tk-options__version-item">
+                                <span class="tk-options__version-label">Version:</span>
+                                <span class="tk-options__version-value" id="about-version">0.1.0</span>
+                            </div>
+                            <div class="tk-options__version-item">
+                                <span class="tk-options__version-label">Browser:</span>
+                                <span class="tk-options__version-value" id="about-browser">Chrome</span>
+                            </div>
+                            <div class="tk-options__version-item">
+                                <span class="tk-options__version-label">Manifest:</span>
+                                <span class="tk-options__version-value" id="about-manifest">MV3</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tk-options__about-links">
+                        <h4>Resources</h4>
+                        <div class="tk-options__link-grid">
+                            <a href="#" class="tk-options__link" id="documentation-link">
+                                <span class="tk-options__link-icon">📚</span>
+                                <span>Documentation</span>
+                            </a>
+                            <a href="#" class="tk-options__link" id="support-link">
+                                <span class="tk-options__link-icon">💬</span>
+                                <span>Support</span>
+                            </a>
+                            <a href="#" class="tk-options__link" id="feedback-link">
+                                <span class="tk-options__link-icon">💡</span>
+                                <span>Feedback</span>
+                            </a>
+                            <a href="#" class="tk-options__link" id="privacy-policy-link">
+                                <span class="tk-options__link-icon">🔒</span>
+                                <span>Privacy Policy</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Save Notification -->
+        <div class="tk-options__save-notification" id="save-notification" style="display: none;">
+            <div class="tk-options__notification-content">
+                <span class="tk-options__notification-text">Settings saved</span>
+                <button class="tk-options__notification-close" id="notification-close">&times;</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="options.js"></script>
+</body>
+</html>

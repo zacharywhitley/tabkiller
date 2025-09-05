@@ -1,0 +1,54 @@
+{
+  "manifest_version": 2,
+  "name": "TabKiller",
+  "version": "0.1.0",
+  "description": "Universal browser plugin for taming prolific use of browser windows and tabs",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage",
+    "history",
+    "bookmarks",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "scripts": ["background/service-worker.js"],
+    "persistent": false
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "TabKiller",
+    "default_icon": {
+      "16": "icons/icon-16.svg",
+      "32": "icons/icon-32.svg",
+      "48": "icons/icon-48.svg",
+      "128": "icons/icon-128.svg"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.svg",
+    "32": "icons/icon-32.svg",
+    "48": "icons/icon-48.svg",
+    "128": "icons/icon-128.svg"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "web_accessible_resources": ["assets/*"],
+  "content_security_policy": "script-src 'self'; object-src 'self'; frame-ancestors 'none';",
+  "applications": {
+    "gecko": {
+      "id": "tabkiller@zacharywhitley.com",
+      "strict_min_version": "91.0"
+    }
+  }
+}

@@ -1,11 +1,27 @@
 /**
  * Encryption layer for sensitive browsing data
+ * Enhanced with Web Crypto API for improved security
  * Provides client-side encryption/decryption for URLs, content, and personal data
  */
 
-import CryptoJS from 'crypto-js';
 import { TabKillerError } from '../shared/types';
 import { storage } from '../utils/cross-browser';
+import {
+  CryptographyService,
+  getCryptographyService,
+  EncryptedData as WebCryptoEncryptedData,
+  WebCryptoEncryptionService
+} from '../crypto';
+import { isWebCryptoSupported } from '../crypto/utils';
+
+// Legacy CryptoJS import for backward compatibility
+let CryptoJS: any;
+try {
+  CryptoJS = require('crypto-js');
+} catch {
+  // CryptoJS not available, use Web Crypto API only
+  console.info('CryptoJS not available, using Web Crypto API exclusively');
+}
 
 /**
  * Encryption configuration
@@ -18,9 +34,9 @@ export interface EncryptionConfig {
 }
 
 /**
- * Encrypted data format
+ * Legacy encrypted data format (for backward compatibility)
  */
-export interface EncryptedData {
+export interface LegacyEncryptedData {
   data: string;
   salt: string;
   iv: string;
@@ -28,6 +44,16 @@ export interface EncryptedData {
   keyDerivation: string;
   iterations: number;
   timestamp: number;
+}
+
+/**
+ * Enhanced encrypted data format
+ */
+export interface EncryptedData extends LegacyEncryptedData {
+  // Extend legacy format for compatibility
+  authTag?: string; // For AES-GCM
+  version?: string; // Format version
+  kdf?: string; // Key derivation function
 }
 
 /**
@@ -44,12 +70,16 @@ export const ENCRYPTED_FIELDS = {
 };
 
 /**
- * Encryption service for browsing data
+ * Enhanced encryption service for browsing data
+ * Uses Web Crypto API when available, falls back to CryptoJS for compatibility
  */
 export class EncryptionService {
   private config: EncryptionConfig;
   private masterKey: string | null = null;
   private keyCache: Map<string, string> = new Map();
+  private webCryptoService?: WebCryptoEncryptionService;
+  private cryptoService?: CryptographyService;
+  private useWebCrypto: boolean;
 
   constructor(config?: Partial<EncryptionConfig>) {
     this.config = {
@@ -59,6 +89,21 @@ export class EncryptionService {
       ivLength: 16,
       ...config
     };
+
+    // Prefer Web Crypto API when available
+    this.useWebCrypto = isWebCryptoSupported();
+    
+    if (this.useWebCrypto) {
+      this.webCryptoService = new WebCryptoEncryptionService();
+      this.cryptoService = getCryptographyService();
+      console.info('Using Web Crypto API for enhanced security');
+    } else if (!CryptoJS) {
+      throw new TabKillerError(
+        'ENCRYPTION_UNAVAILABLE',
+        'Neither Web Crypto API nor CryptoJS is available',
+        'background'
+      );
+    }
   }
 
   /**
@@ -66,6 +111,20 @@ export class EncryptionService {
    */
   async initialize(masterPassword?: string): Promise<void> {
     try {
+      if (this.useWebCrypto && this.cryptoService) {
+        // Initialize Web Crypto API service
+        if (!this.cryptoService.isInitialized()) {
+          await this.cryptoService.initialize(masterPassword);
+        }
+        
+        // Generate or retrieve master key for Web Crypto API
+        if (masterPassword) {
+          const derivedKey = await this.webCryptoService!.deriveKey(masterPassword);
+          this.webCryptoService!.cacheKey('master_key', derivedKey.key);
+        }
+      }
+
+      // Legacy initialization
       if (masterPassword) {
         this.masterKey = await this.deriveMasterKey(masterPassword);
       } else {

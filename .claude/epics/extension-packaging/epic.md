@@ -1,8 +1,9 @@
 ---
 name: extension-packaging
-status: backlog
+status: completed
 created: 2025-09-07T18:39:14Z
-progress: 0%
+completed: 2025-09-07T22:52:28Z
+progress: 100%
 prd: .claude/prds/extension-packaging.md
 github: https://github.com/zacharywhitley/tabkiller/issues/27
 ---

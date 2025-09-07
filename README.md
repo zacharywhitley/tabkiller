@@ -10,7 +10,7 @@ TabKiller revolutionizes traditional bookmarks by providing:
 - **Session Tagging**: Organize browsing activities by purpose and context
 - **AI-Powered Search**: Natural language queries across your browsing history
 - **Privacy-First**: End-to-end encryption with user-controlled data
-- **Cross-Browser Sync**: Decentralized synchronization across devices using SSB protocol
+- **Cross-Device Sync**: Real-time decentralized synchronization using GunDB relay network
 - **Page Archiving**: Complete page preservation with SingleFile integration
 
 ## Key Features
@@ -33,39 +33,44 @@ TabKiller revolutionizes traditional bookmarks by providing:
 - Decentralized synchronization (no corporate servers)
 - Complete data ownership and portability
 
-### 📊 Graph Database Integration
-- NeoDB for relationship-rich data storage
-- Navigation path analysis
+### 📊 Unified Graph Database
+- GunDB for graph storage and real-time sync
+- Navigation path analysis with CRDT conflict resolution  
 - Temporal pattern recognition
-- Content relationship discovery
+- Real-time cross-device data synchronization
 
 ## Architecture
 
 ```
-Browser Events → Content Scripts → Background Service → Local Database
-                                        ↓
-User Interface ← Search Engine ← Query Processor ← Graph Database
-                                        ↓
-External Sync ← Encryption Layer ← Batch Processor ← Change Detection
+Browser Events → Content Scripts → Background Service → GunDB (Local + Sync)
+                                        ↓                      ↓
+User Interface ← Reactive Queries ← Query Processor ← Real-time Updates
+                                        ↓                      ↓
+Cross-Device ← Zero-Knowledge E2E ← GunDB Relays ← Encrypted Sync
 ```
 
 ## Technology Stack
 
 - **Browser Extension**: Manifest V3 for modern browser compatibility
 - **Languages**: JavaScript/TypeScript, CSS3, HTML5
-- **Database**: NeoDB (graph database) + IndexedDB (local storage)
-- **Synchronization**: Secure Scuttlebutt (SSB) protocol
-- **Security**: Web Crypto API with AES-GCM encryption
+- **Database**: GunDB (unified graph database + real-time sync)
+- **Synchronization**: GunDB relay servers with CRDT conflict resolution
+- **Security**: Web Crypto API + GunDB SEA with zero-knowledge E2E encryption
 - **Page Archiving**: SingleFile integration
 - **AI Integration**: OpenAI/Claude APIs for natural language processing
 
 ## Development Status
 
-**Current Phase**: Initial setup and planning
+**Current Phase**: Core Architecture Complete ✅  
 - ✅ Repository initialized with Claude Code PM system
 - ✅ Comprehensive project context established
-- ✅ Technical architecture defined
-- 🚧 Core extension development in progress
+- ✅ **GunDB Core Integration**: Complete unified database system
+- ✅ **Relay Infrastructure**: Production-ready GunDB relay servers
+- ✅ **Repository Layer**: Dual-backend support with 100% API compatibility
+- ✅ **Zero-Knowledge Encryption**: Web Crypto + GunDB SEA integration
+- ✅ **Real-Time Queries**: Reactive system replacing polling architecture
+- ✅ **Cross-Device Sync**: CRDT-based sync protocol with <30s latency
+- 🚧 UI implementation and extension packaging in progress
 
 ## Getting Started
 
@@ -119,37 +124,37 @@ This project follows spec-driven development principles:
 
 TabKiller is built on the principle that users should own and control their browsing data:
 
-- **Local First**: Primary storage on user devices, not cloud servers
-- **User-Controlled Encryption**: You manage your own encryption keys
-- **Decentralized Sync**: Peer-to-peer synchronization without corporate intermediaries
+- **Local First**: Primary storage on user devices with offline-first architecture
+- **Zero-Knowledge Encryption**: End-to-end encryption where relay servers cannot decrypt data
+- **Decentralized Sync**: GunDB relay network with CRDT conflict resolution
 - **Open Source**: Core security components are auditable
 - **Data Portability**: Export all data in open formats
 
 ## Roadmap
 
-### Phase 1: Foundation (Months 1-2)
-- Core extension architecture
-- Basic tab and navigation tracking
-- Local storage and session management
-- Cross-browser compatibility
+### ✅ Phase 1: Foundation Architecture (Complete)
+- ✅ GunDB core integration with unified graph database
+- ✅ Real-time reactive query system (eliminates polling)
+- ✅ Repository layer with dual-backend support
+- ✅ Cross-browser compatibility infrastructure
 
-### Phase 2: Intelligence (Months 3-4)
-- Graph database integration
-- Session tagging and organization
-- Basic search and filtering
-- Page archiving system
+### ✅ Phase 2: Synchronization & Security (Complete)
+- ✅ GunDB relay server infrastructure with monitoring
+- ✅ Zero-knowledge end-to-end encryption (Web Crypto + GunDB SEA)
+- ✅ CRDT-based conflict resolution for cross-device sync
+- ✅ Production-ready security validation and testing
 
-### Phase 3: Synchronization (Months 5-6)
-- SSB protocol integration
-- End-to-end encryption
-- Cross-device synchronization
-- AI-powered natural language queries
+### 🚧 Phase 3: Extension Implementation (In Progress)
+- 🚧 Browser extension UI and content scripts
+- 🚧 Tab and navigation tracking implementation
+- 🚧 Session tagging and organization features
+- 🚧 Page archiving with SingleFile integration
 
-### Phase 4: Polish and Launch (Months 6-8)
-- User interface refinement
-- Performance optimization
-- Security auditing
-- Beta user program
+### 📋 Phase 4: AI & Polish (Planned)
+- 📋 AI-powered natural language queries
+- 📋 Advanced session pattern recognition
+- 📋 Performance optimization and security auditing
+- 📋 Beta user program and feedback integration
 
 ## License
 

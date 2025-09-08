@@ -1,0 +1,173 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run type check
+      run: npm run type-check
+    
+    - name: Run linter
+      run: npm run lint
+    
+    - name: Run tests
+      run: npm run test
+
+  build-and-package:
+    name: Build and Package
+    runs-on: ubuntu-latest
+    needs: test
+    
+    strategy:
+      matrix:
+        browser: [chrome, firefox, safari, edge]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build extension for ${{ matrix.browser }}
+      run: npm run build:${{ matrix.browser }}
+      env:
+        NODE_ENV: production
+    
+    - name: Create package for ${{ matrix.browser }}
+      run: |
+        mkdir -p dist
+        cd build/${{ matrix.browser }}
+        zip -r ../../dist/tabkiller-${{ matrix.browser }}.zip .
+    
+    - name: Upload ${{ matrix.browser }} package
+      uses: actions/upload-artifact@v3
+      with:
+        name: tabkiller-${{ matrix.browser }}-package
+        path: dist/tabkiller-${{ matrix.browser }}.zip
+        retention-days: 90
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build-and-package
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download all packages
+      uses: actions/download-artifact@v3
+      with:
+        path: packages/
+    
+    - name: Prepare release assets
+      run: |
+        mkdir -p release-assets
+        find packages -name "*.zip" -exec cp {} release-assets/ \;
+        ls -la release-assets/
+    
+    - name: Extract version from tag
+      id: version
+      run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+        echo "## TabKiller Extension ${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### Downloads" >> $GITHUB_OUTPUT
+        echo "- **Chrome**: \`tabkiller-chrome.zip\`" >> $GITHUB_OUTPUT
+        echo "- **Firefox**: \`tabkiller-firefox.zip\`" >> $GITHUB_OUTPUT
+        echo "- **Safari**: \`tabkiller-safari.zip\`" >> $GITHUB_OUTPUT
+        echo "- **Edge**: \`tabkiller-edge.zip\`" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### Installation Instructions" >> $GITHUB_OUTPUT
+        echo "1. Download the appropriate zip file for your browser" >> $GITHUB_OUTPUT
+        echo "2. Extract the contents to a folder" >> $GITHUB_OUTPUT
+        echo "3. Load the extension in developer mode:" >> $GITHUB_OUTPUT
+        echo "   - **Chrome/Edge**: Go to chrome://extensions/, enable Developer mode, click 'Load unpacked'" >> $GITHUB_OUTPUT
+        echo "   - **Firefox**: Go to about:debugging, click 'This Firefox', click 'Load Temporary Add-on'" >> $GITHUB_OUTPUT
+        echo "   - **Safari**: Use Xcode to load the extension" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### Changes" >> $GITHUB_OUTPUT
+        echo "See commit history for detailed changes in this release." >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        release_name: TabKiller ${{ steps.version.outputs.version }}
+        body: ${{ steps.release_notes.outputs.release_notes }}
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+      id: create_release
+    
+    - name: Upload Chrome Extension
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release-assets/tabkiller-chrome.zip
+        asset_name: tabkiller-chrome.zip
+        asset_content_type: application/zip
+    
+    - name: Upload Firefox Extension
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release-assets/tabkiller-firefox.zip
+        asset_name: tabkiller-firefox.zip
+        asset_content_type: application/zip
+    
+    - name: Upload Safari Extension
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release-assets/tabkiller-safari.zip
+        asset_name: tabkiller-safari.zip
+        asset_content_type: application/zip
+    
+    - name: Upload Edge Extension
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./release-assets/tabkiller-edge.zip
+        asset_name: tabkiller-edge.zip
+        asset_content_type: application/zip

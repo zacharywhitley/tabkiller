@@ -1,6 +1,7 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const ExtensionReloader = require('webpack-extension-reloader');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = !isProduction;
@@ -15,7 +16,8 @@ const config = {
   entry: {
     'background/service-worker': './src/background/service-worker.ts',
     'content/content-script': './src/content/content-script.ts',
-    'popup/popup': './src/popup/popup.ts'
+    'popup/popup': './src/popup/popup.ts',
+    'options/options': './src/options/options.ts'
   },
   
   output: {
@@ -83,8 +85,24 @@ const config = {
       chunks: ['popup/popup']
     }),
     
+    new HtmlWebpackPlugin({
+      template: 'src/options/options.html',
+      filename: 'options/options.html',
+      chunks: ['options/options']
+    }),
+    
     // Add webpack extension reloader for development
-    ...(isDevelopment ? [] : [])
+    ...(isDevelopment ? [
+      new ExtensionReloader({
+        port: 9090 + Math.floor(Math.random() * 10), // Use random port to avoid conflicts
+        reloadPage: true,
+        entries: {
+          contentScript: 'content/content-script',
+          background: 'background/service-worker',
+          extensionPage: ['popup/popup', 'options/options']
+        }
+      })
+    ] : [])
   ],
   
   optimization: {

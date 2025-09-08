@@ -1,7 +1,6 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const ExtensionReloader = require('webpack-extension-reloader');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = !isProduction;
@@ -91,18 +90,8 @@ const config = {
       chunks: ['options/options']
     }),
     
-    // Add webpack extension reloader for development
-    ...(isDevelopment ? [
-      new ExtensionReloader({
-        port: 9090 + Math.floor(Math.random() * 10), // Use random port to avoid conflicts
-        reloadPage: true,
-        entries: {
-          contentScript: 'content/content-script',
-          background: 'background/service-worker',
-          extensionPage: ['popup/popup', 'options/options']
-        }
-      })
-    ] : [])
+    // Additional development plugins can be added here
+    ...(isDevelopment ? [] : [])
   ],
   
   optimization: {

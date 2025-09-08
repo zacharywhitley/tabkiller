@@ -4,210 +4,64 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TabKiller</title>
-    <link rel="stylesheet" href="styles/popup.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 400px;
+            min-height: 500px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        #root {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Error fallback styling */
+        .tk-error-fallback {
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+        }
+        
+        .tk-error-fallback h2 {
+            color: #e74c3c;
+            margin-bottom: 10px;
+        }
+        
+        .tk-error-fallback p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .tk-error-fallback button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .tk-error-fallback button:hover {
+            background: #2980b9;
+        }
+        
+        /* Loading state */
+        .tk-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #666;
+        }
+    </style>
 </head>
 <body>
-    <div class="tk-popup">
-        <header class="tk-popup__header">
-            <h1 class="tk-popup__title">TabKiller</h1>
-            <div class="tk-popup__status" id="status-indicator">
-                <span class="tk-popup__status-dot tk-popup__status-dot--active"></span>
-                <span class="tk-popup__status-text">Active</span>
-            </div>
-        </header>
-
-        <main class="tk-popup__content">
-            <!-- Search Section -->
-            <section class="tk-popup__section tk-popup__section--search">
-                <div class="tk-search-container" id="search-container">
-                    <!-- Search component will be inserted here -->
-                </div>
-            </section>
-
-            <!-- Current Session Section -->
-            <section class="tk-popup__section">
-                <h2 class="tk-popup__section-title">Current Session</h2>
-                <div class="tk-session-info" id="current-session">
-                    <div class="tk-session-info__placeholder">
-                        No active session
-                    </div>
-                </div>
-                <div class="tk-popup__actions">
-                    <button class="tk-popup__button tk-popup__button--primary" id="create-session-btn">
-                        Start New Session
-                    </button>
-                    <button class="tk-popup__button tk-popup__button--secondary" id="save-session-btn" disabled>
-                        Save Session
-                    </button>
-                    <button class="tk-popup__button tk-popup__button--outline" id="tag-session-btn" disabled>
-                        Add Tags
-                    </button>
-                </div>
-            </section>
-
-            <!-- Quick Stats Section -->
-            <section class="tk-popup__section">
-                <h2 class="tk-popup__section-title">Quick Stats</h2>
-                <div class="tk-stats-grid">
-                    <div class="tk-stat-item">
-                        <span class="tk-stat-item__label">Active Tabs</span>
-                        <span class="tk-stat-item__value" id="active-tabs-count">0</span>
-                    </div>
-                    <div class="tk-stat-item">
-                        <span class="tk-stat-item__label">Total Sessions</span>
-                        <span class="tk-stat-item__value" id="total-sessions-count">0</span>
-                    </div>
-                    <div class="tk-stat-item">
-                        <span class="tk-stat-item__label">Today's Pages</span>
-                        <span class="tk-stat-item__value" id="todays-pages-count">0</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Quick Actions Section -->
-            <section class="tk-popup__section">
-                <h2 class="tk-popup__section-title">Quick Actions</h2>
-                <div class="tk-popup__actions tk-popup__actions--grid">
-                    <button class="tk-popup__button tk-popup__button--outline" id="capture-tabs-btn">
-                        <span class="tk-popup__button-icon">📸</span>
-                        Capture Tabs
-                    </button>
-                    <button class="tk-popup__button tk-popup__button--outline" id="view-history-btn">
-                        <span class="tk-popup__button-icon">📚</span>
-                        View History
-                    </button>
-                    <button class="tk-popup__button tk-popup__button--outline" id="export-data-btn">
-                        <span class="tk-popup__button-icon">📤</span>
-                        Export Data
-                    </button>
-                    <button class="tk-popup__button tk-popup__button--outline" id="settings-btn">
-                        <span class="tk-popup__button-icon">⚙️</span>
-                        Settings
-                    </button>
-                </div>
-            </section>
-
-            <!-- Recent Sessions Section -->
-            <section class="tk-popup__section">
-                <h2 class="tk-popup__section-title">Recent Sessions</h2>
-                <div class="tk-session-list" id="recent-sessions">
-                    <div class="tk-session-list__placeholder">
-                        No recent sessions
-                    </div>
-                </div>
-                <button class="tk-popup__button tk-popup__button--text" id="view-all-sessions-btn">
-                    View All Sessions
-                </button>
-            </section>
-        </main>
-
-        <footer class="tk-popup__footer">
-            <div class="tk-popup__footer-info">
-                <span class="tk-popup__version" id="version-info">v0.1.0</span>
-                <span class="tk-popup__browser" id="browser-info">Chrome</span>
-            </div>
-        </footer>
+    <div id="root">
+        <div class="tk-loading">Loading TabKiller...</div>
     </div>
-
-    <!-- Session Creation Modal -->
-    <div class="tk-modal" id="session-modal" style="display: none;">
-        <div class="tk-modal__overlay" id="modal-overlay"></div>
-        <div class="tk-modal__content">
-            <header class="tk-modal__header">
-                <h3 class="tk-modal__title">Create New Session</h3>
-                <button class="tk-modal__close" id="modal-close-btn">&times;</button>
-            </header>
-            <form class="tk-modal__form" id="session-form">
-                <div class="tk-form-group">
-                    <label class="tk-form-label" for="session-name">Session Name</label>
-                    <input 
-                        class="tk-form-input" 
-                        type="text" 
-                        id="session-name" 
-                        name="name" 
-                        placeholder="e.g., Research Project Alpha"
-                        required
-                    >
-                </div>
-                <div class="tk-form-group">
-                    <label class="tk-form-label">Tags</label>
-                    <div class="tk-tag-manager-container" id="session-tags">
-                        <!-- TagManager component will be inserted here -->
-                    </div>
-                </div>
-                <div class="tk-form-group">
-                    <label class="tk-form-label" for="session-notes">Notes (optional)</label>
-                    <textarea 
-                        class="tk-form-input tk-form-input--textarea" 
-                        id="session-notes" 
-                        name="notes" 
-                        placeholder="Brief description of this session's purpose..."
-                        rows="3"
-                    ></textarea>
-                </div>
-                <div class="tk-form-group">
-                    <label class="tk-form-checkbox">
-                        <input type="checkbox" id="session-private" name="private">
-                        <span class="tk-form-checkbox__checkmark"></span>
-                        <span class="tk-form-checkbox__label">Mark as private (exclude from sync)</span>
-                    </label>
-                </div>
-                <div class="tk-form-actions">
-                    <button type="button" class="tk-popup__button tk-popup__button--secondary" id="cancel-session-btn">
-                        Cancel
-                    </button>
-                    <button type="submit" class="tk-popup__button tk-popup__button--primary">
-                        Create Session
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Tag Management Modal -->
-    <div class="tk-modal" id="tag-modal" style="display: none;">
-        <div class="tk-modal__overlay" id="tag-modal-overlay"></div>
-        <div class="tk-modal__content">
-            <header class="tk-modal__header">
-                <h3 class="tk-modal__title">Manage Session Tags</h3>
-                <button class="tk-modal__close" id="tag-modal-close-btn">&times;</button>
-            </header>
-            <div class="tk-modal__body">
-                <div class="tk-form-group">
-                    <label class="tk-form-label">Current Session Tags</label>
-                    <div class="tk-tag-manager-container" id="current-session-tags">
-                        <!-- TagManager component will be inserted here -->
-                    </div>
-                </div>
-                <div class="tk-form-group">
-                    <label class="tk-form-label">Session Analytics</label>
-                    <div class="tk-session-analytics" id="session-analytics">
-                        <div class="tk-analytics-item">
-                            <span class="tk-analytics-label">Duration:</span>
-                            <span class="tk-analytics-value" id="analytics-duration">--</span>
-                        </div>
-                        <div class="tk-analytics-item">
-                            <span class="tk-analytics-label">Pages visited:</span>
-                            <span class="tk-analytics-value" id="analytics-pages">--</span>
-                        </div>
-                        <div class="tk-analytics-item">
-                            <span class="tk-analytics-label">Domains:</span>
-                            <span class="tk-analytics-value" id="analytics-domains">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="tk-modal__footer">
-                <button type="button" class="tk-popup__button tk-popup__button--secondary" id="tag-modal-cancel-btn">
-                    Cancel
-                </button>
-                <button type="button" class="tk-popup__button tk-popup__button--primary" id="tag-modal-save-btn">
-                    Save Tags
-                </button>
-            </div>
-        </div>
-    </div>
-
     <script src="popup.js"></script>
 </body>
 </html>

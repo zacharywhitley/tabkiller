@@ -15,8 +15,9 @@ const config = {
   entry: {
     'background/service-worker': './src/background/service-worker.ts',
     'content/content-script': './src/content/content-script.ts',
-    'popup/popup': './src/popup/popup.ts',
-    'options/options': './src/options/options.ts'
+    'popup/popup': './src/ui/popup/index.tsx',
+    'options/options': './src/ui/options/index.tsx',
+    'history/history': './src/ui/history/index.tsx'
   },
   
   output: {
@@ -26,7 +27,7 @@ const config = {
   },
   
   resolve: {
-    extensions: ['.ts', '.js'],
+    extensions: ['.tsx', '.ts', '.jsx', '.js'],
     alias: {
       '@': path.resolve(__dirname, 'src')
     }
@@ -35,7 +36,7 @@ const config = {
   module: {
     rules: [
       {
-        test: /\.ts$/,
+        test: /\.(ts|tsx)$/,
         use: {
           loader: 'ts-loader',
           options: {
@@ -88,6 +89,12 @@ const config = {
       template: 'src/options/options.html',
       filename: 'options/options.html',
       chunks: ['options/options']
+    }),
+    
+    new HtmlWebpackPlugin({
+      template: 'src/ui/history/history.html',
+      filename: 'history/history.html',
+      chunks: ['history/history']
     }),
     
     // Additional development plugins can be added here

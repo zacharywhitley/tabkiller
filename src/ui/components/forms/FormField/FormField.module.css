@@ -1,0 +1,67 @@
+/**
+ * FormField Component Styles
+ * Uses CSS custom properties from the design system
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--tk-spacing-md);
+}
+
+.container--full-width {
+  width: 100%;
+}
+
+/* Label styles */
+.label {
+  font-size: var(--tk-font-size-sm);
+  font-weight: var(--tk-font-weight-medium);
+  color: var(--tk-text-primary);
+  margin-bottom: var(--tk-spacing-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tk-spacing-xs);
+  line-height: var(--tk-line-height-normal);
+}
+
+.label--error {
+  color: var(--tk-danger-color);
+}
+
+.required {
+  color: var(--tk-danger-color);
+  font-weight: var(--tk-font-weight-bold);
+  font-size: var(--tk-font-size-sm);
+}
+
+/* Control container */
+.control {
+  position: relative;
+}
+
+/* Helper text */
+.helperText {
+  font-size: var(--tk-font-size-xs);
+  color: var(--tk-text-secondary);
+  margin-top: var(--tk-spacing-xs);
+  line-height: var(--tk-line-height-normal);
+}
+
+.helperText--error {
+  color: var(--tk-danger-color);
+}
+
+/* Error state styling */
+.container--error {
+  /* Error state can affect the entire container */
+}
+
+/* Accessibility enhancements */
+.container:focus-within .label {
+  color: var(--tk-accent-color);
+}
+
+.container--error:focus-within .label {
+  color: var(--tk-danger-color);
+}

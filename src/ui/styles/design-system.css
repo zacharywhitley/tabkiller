@@ -1,0 +1,151 @@
+/**
+ * TabKiller Design System
+ * Centralized design tokens and CSS custom properties for consistent theming
+ */
+
+:root {
+  /* Colors - Light Theme */
+  --tk-bg-primary: #ffffff;
+  --tk-bg-secondary: #f8f9fa;
+  --tk-bg-tertiary: #e9ecef;
+  --tk-text-primary: #212529;
+  --tk-text-secondary: #6c757d;
+  --tk-text-muted: #adb5bd;
+  --tk-border-color: #dee2e6;
+  
+  /* Accent Colors */
+  --tk-accent-color: #007bff;
+  --tk-accent-hover: #0056b3;
+  --tk-success-color: #28a745;
+  --tk-warning-color: #ffc107;
+  --tk-danger-color: #dc3545;
+  --tk-info-color: #17a2b8;
+  
+  /* Border Radius */
+  --tk-border-radius: 6px;
+  --tk-border-radius-sm: 4px;
+  --tk-border-radius-lg: 12px;
+  --tk-border-radius-xl: 16px;
+  
+  /* Shadows */
+  --tk-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --tk-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --tk-shadow-lg: 0 8px 15px rgba(0, 0, 0, 0.15);
+  --tk-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+  
+  /* Spacing Scale */
+  --tk-spacing-xs: 4px;
+  --tk-spacing-sm: 8px;
+  --tk-spacing-md: 16px;
+  --tk-spacing-lg: 24px;
+  --tk-spacing-xl: 32px;
+  --tk-spacing-2xl: 48px;
+  --tk-spacing-3xl: 64px;
+  
+  /* Typography Scale */
+  --tk-font-size-xs: 12px;
+  --tk-font-size-sm: 14px;
+  --tk-font-size-base: 16px;
+  --tk-font-size-lg: 18px;
+  --tk-font-size-xl: 20px;
+  --tk-font-size-2xl: 24px;
+  --tk-font-size-3xl: 32px;
+  
+  /* Font Weights */
+  --tk-font-weight-normal: 400;
+  --tk-font-weight-medium: 500;
+  --tk-font-weight-semibold: 600;
+  --tk-font-weight-bold: 700;
+  
+  /* Line Heights */
+  --tk-line-height-tight: 1.2;
+  --tk-line-height-normal: 1.5;
+  --tk-line-height-relaxed: 1.75;
+  
+  /* Z-Index Scale */
+  --tk-z-dropdown: 1000;
+  --tk-z-modal: 1050;
+  --tk-z-popover: 1060;
+  --tk-z-tooltip: 1070;
+  --tk-z-toast: 1080;
+  
+  /* Transition Durations */
+  --tk-duration-fast: 150ms;
+  --tk-duration-normal: 250ms;
+  --tk-duration-slow: 350ms;
+  
+  /* Transition Easings */
+  --tk-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --tk-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --tk-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark Theme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tk-bg-primary: #1a1a1a;
+    --tk-bg-secondary: #2d2d2d;
+    --tk-bg-tertiary: #3d3d3d;
+    --tk-text-primary: #ffffff;
+    --tk-text-secondary: #b3b3b3;
+    --tk-text-muted: #666666;
+    --tk-border-color: #404040;
+    --tk-accent-color: #4a9eff;
+    --tk-accent-hover: #357abd;
+  }
+}
+
+/* Force dark theme class */
+.tk-theme-dark {
+  --tk-bg-primary: #1a1a1a;
+  --tk-bg-secondary: #2d2d2d;
+  --tk-bg-tertiary: #3d3d3d;
+  --tk-text-primary: #ffffff;
+  --tk-text-secondary: #b3b3b3;
+  --tk-text-muted: #666666;
+  --tk-border-color: #404040;
+  --tk-accent-color: #4a9eff;
+  --tk-accent-hover: #357abd;
+}
+
+/* Force light theme class */
+.tk-theme-light {
+  --tk-bg-primary: #ffffff;
+  --tk-bg-secondary: #f8f9fa;
+  --tk-bg-tertiary: #e9ecef;
+  --tk-text-primary: #212529;
+  --tk-text-secondary: #6c757d;
+  --tk-text-muted: #adb5bd;
+  --tk-border-color: #dee2e6;
+  --tk-accent-color: #007bff;
+  --tk-accent-hover: #0056b3;
+}
+
+/* Base reset and common styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Focus styles for accessibility */
+.tk-focus-visible:focus-visible {
+  outline: 2px solid var(--tk-accent-color);
+  outline-offset: 2px;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast support */
+@media (prefers-contrast: high) {
+  :root {
+    --tk-border-color: currentColor;
+  }
+}

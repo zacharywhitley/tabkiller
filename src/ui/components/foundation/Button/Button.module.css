@@ -1,0 +1,233 @@
+/**
+ * Button Component Styles
+ * Uses CSS custom properties from the design system
+ */
+
+.button {
+  /* Base button styles */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--tk-duration-normal) var(--tk-ease-in-out);
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+  border: none;
+  position: relative;
+  overflow: hidden;
+  
+  /* Focus styles for accessibility */
+  &:focus-visible {
+    outline: 2px solid var(--tk-accent-color);
+    outline-offset: 2px;
+  }
+  
+  /* Disabled state */
+  &:disabled,
+  &[aria-busy="true"] {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+/* Button Variants */
+.button--primary {
+  background-color: var(--tk-accent-color);
+  color: white;
+  
+  &:hover:not(:disabled):not([aria-busy="true"]) {
+    background-color: var(--tk-accent-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--tk-shadow-md);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.button--secondary {
+  background-color: var(--tk-bg-tertiary);
+  color: var(--tk-text-primary);
+  border: 1px solid var(--tk-border-color);
+  
+  &:hover:not(:disabled):not([aria-busy="true"]) {
+    background-color: var(--tk-border-color);
+    transform: translateY(-1px);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.button--outline {
+  background-color: transparent;
+  color: var(--tk-text-secondary);
+  border: 1px solid var(--tk-border-color);
+  
+  &:hover:not(:disabled):not([aria-busy="true"]) {
+    background-color: var(--tk-bg-secondary);
+    color: var(--tk-text-primary);
+    border-color: var(--tk-text-secondary);
+  }
+}
+
+.button--text {
+  background-color: transparent;
+  color: var(--tk-accent-color);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: all var(--tk-duration-normal) var(--tk-ease-in-out);
+  
+  &:hover:not(:disabled):not([aria-busy="true"]) {
+    color: var(--tk-accent-hover);
+    text-decoration-color: currentColor;
+  }
+}
+
+.button--danger {
+  background-color: var(--tk-danger-color);
+  color: white;
+  
+  &:hover:not(:disabled):not([aria-busy="true"]) {
+    background-color: #c82333;
+    transform: translateY(-1px);
+    box-shadow: var(--tk-shadow-md);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+/* Button Sizes */
+.button--small {
+  padding: var(--tk-spacing-xs) var(--tk-spacing-sm);
+  font-size: var(--tk-font-size-xs);
+  font-weight: var(--tk-font-weight-medium);
+  min-height: 28px;
+  border-radius: var(--tk-border-radius-sm);
+  
+  .content {
+    gap: var(--tk-spacing-xs);
+  }
+}
+
+.button--medium {
+  padding: var(--tk-spacing-sm) var(--tk-spacing-md);
+  font-size: var(--tk-font-size-sm);
+  font-weight: var(--tk-font-weight-medium);
+  min-height: 36px;
+  border-radius: var(--tk-border-radius);
+  
+  .content {
+    gap: var(--tk-spacing-xs);
+  }
+}
+
+.button--large {
+  padding: var(--tk-spacing-md) var(--tk-spacing-lg);
+  font-size: var(--tk-font-size-base);
+  font-weight: var(--tk-font-weight-medium);
+  min-height: 44px;
+  border-radius: var(--tk-border-radius);
+  
+  .content {
+    gap: var(--tk-spacing-sm);
+  }
+}
+
+/* Full width variant */
+.button--full-width {
+  width: 100%;
+}
+
+/* Button content layout */
+.content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.text {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1em;
+  line-height: 1;
+}
+
+/* Loading spinner */
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinnerSvg {
+  width: 1em;
+  height: 1em;
+  animation: tk-spin 1s linear infinite;
+}
+
+@keyframes tk-spin {
+  0% {
+    transform: rotate(0deg);
+    stroke-dashoffset: 31.416;
+  }
+  50% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    transform: rotate(360deg);
+    stroke-dashoffset: -31.416;
+  }
+}
+
+/* Special states for text buttons */
+.button--text {
+  .content {
+    padding: var(--tk-spacing-xs) 0;
+    min-height: auto;
+  }
+}
+
+/* High contrast support */
+@media (prefers-contrast: high) {
+  .button {
+    border: 2px solid currentColor;
+  }
+  
+  .button:focus-visible {
+    outline: 3px solid var(--tk-accent-color);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+  
+  .spinnerSvg {
+    animation: none;
+  }
+  
+  .button--primary:hover,
+  .button--secondary:hover,
+  .button--danger:hover {
+    transform: none;
+  }
+}

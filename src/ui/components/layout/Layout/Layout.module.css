@@ -1,0 +1,127 @@
+/**
+ * Layout Component Styles
+ * Uses CSS custom properties from the design system
+ */
+
+.layout {
+  display: flex;
+}
+
+/* Direction */
+.layout--row {
+  flex-direction: row;
+}
+
+.layout--column {
+  flex-direction: column;
+}
+
+/* Justify content (main axis) */
+.layout--justify-start {
+  justify-content: flex-start;
+}
+
+.layout--justify-end {
+  justify-content: flex-end;
+}
+
+.layout--justify-center {
+  justify-content: center;
+}
+
+.layout--justify-between {
+  justify-content: space-between;
+}
+
+.layout--justify-around {
+  justify-content: space-around;
+}
+
+.layout--justify-evenly {
+  justify-content: space-evenly;
+}
+
+/* Align items (cross axis) */
+.layout--align-start {
+  align-items: flex-start;
+}
+
+.layout--align-end {
+  align-items: flex-end;
+}
+
+.layout--align-center {
+  align-items: center;
+}
+
+.layout--align-stretch {
+  align-items: stretch;
+}
+
+.layout--align-baseline {
+  align-items: baseline;
+}
+
+/* Gap between items */
+.layout--gap-none {
+  gap: 0;
+}
+
+.layout--gap-xs {
+  gap: var(--tk-spacing-xs);
+}
+
+.layout--gap-sm {
+  gap: var(--tk-spacing-sm);
+}
+
+.layout--gap-md {
+  gap: var(--tk-spacing-md);
+}
+
+.layout--gap-lg {
+  gap: var(--tk-spacing-lg);
+}
+
+.layout--gap-xl {
+  gap: var(--tk-spacing-xl);
+}
+
+/* Wrap */
+.layout--wrap {
+  flex-wrap: wrap;
+}
+
+/* Padding */
+.layout--padding-none {
+  padding: 0;
+}
+
+.layout--padding-xs {
+  padding: var(--tk-spacing-xs);
+}
+
+.layout--padding-sm {
+  padding: var(--tk-spacing-sm);
+}
+
+.layout--padding-md {
+  padding: var(--tk-spacing-md);
+}
+
+.layout--padding-lg {
+  padding: var(--tk-spacing-lg);
+}
+
+.layout--padding-xl {
+  padding: var(--tk-spacing-xl);
+}
+
+/* Full width/height */
+.layout--full-width {
+  width: 100%;
+}
+
+.layout--full-height {
+  height: 100%;
+}

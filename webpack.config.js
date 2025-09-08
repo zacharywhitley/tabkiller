@@ -47,7 +47,30 @@ const config = {
       },
       {
         test: /\.css$/,
-        use: ['style-loader', 'css-loader']
+        oneOf: [
+          // CSS Modules for component-specific styles (*.module.css)
+          {
+            test: /\.module\.css$/,
+            use: [
+              'style-loader',
+              {
+                loader: 'css-loader',
+                options: {
+                  modules: {
+                    localIdentName: isDevelopment 
+                      ? '[name]__[local]__[hash:base64:5]'
+                      : '[hash:base64:8]',
+                  },
+                  importLoaders: 1,
+                }
+              }
+            ]
+          },
+          // Global CSS for design system and existing styles
+          {
+            use: ['style-loader', 'css-loader']
+          }
+        ]
       },
       {
         test: /\.(png|jpg|jpeg|gif|svg)$/,

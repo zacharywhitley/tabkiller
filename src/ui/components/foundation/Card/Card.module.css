@@ -1,0 +1,97 @@
+/**
+ * Card Component Styles
+ * Uses CSS custom properties from the design system
+ */
+
+.card {
+  background-color: var(--tk-bg-primary);
+  border-radius: var(--tk-border-radius);
+  transition: all var(--tk-duration-normal) var(--tk-ease-in-out);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Card variants */
+.card--default {
+  /* Default variant uses base styles */
+}
+
+.card--outlined {
+  border: 1px solid var(--tk-border-color);
+}
+
+.card--elevated {
+  box-shadow: var(--tk-shadow-md);
+  
+  &:hover {
+    box-shadow: var(--tk-shadow-lg);
+  }
+}
+
+/* Interactive card */
+.card--interactive {
+  cursor: pointer;
+  transition: all var(--tk-duration-normal) var(--tk-ease-in-out);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tk-shadow-lg);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+  
+  &:focus-visible {
+    outline: 2px solid var(--tk-accent-color);
+    outline-offset: 2px;
+  }
+}
+
+.card--outlined.card--interactive:hover {
+  border-color: var(--tk-accent-color);
+  box-shadow: var(--tk-shadow-md);
+}
+
+.card--elevated.card--interactive:hover {
+  box-shadow: var(--tk-shadow-xl);
+}
+
+/* Padding variants */
+.card--padding-none {
+  padding: 0;
+}
+
+.card--padding-small {
+  padding: var(--tk-spacing-sm);
+}
+
+.card--padding-medium {
+  padding: var(--tk-spacing-md);
+}
+
+.card--padding-large {
+  padding: var(--tk-spacing-lg);
+}
+
+/* High contrast support */
+@media (prefers-contrast: high) {
+  .card--outlined {
+    border-width: 2px;
+  }
+  
+  .card--interactive:focus-visible {
+    outline: 3px solid var(--tk-accent-color);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+  
+  .card--interactive:hover {
+    transform: none;
+  }
+}

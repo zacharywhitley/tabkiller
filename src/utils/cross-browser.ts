@@ -1,37 +1,53 @@
 import browser from 'webextension-polyfill';
+import { 
+  initializeBrowserAdapter, 
+  getBrowserAdapter, 
+  isBrowserAdapterInitialized,
+  BrowserType,
+  getCurrentBrowserType
+} from '../browser';
 
 /**
  * Cross-browser compatibility utilities for WebExtensions
  * Handles differences between Chrome Manifest V3, Firefox, and Safari
+ * 
+ * @deprecated Use the new browser adapter system from '../browser' for enhanced functionality
  */
 
 export type Browser = 'chrome' | 'firefox' | 'safari' | 'edge' | 'unknown';
 
 /**
  * Detect the current browser environment
+ * @deprecated Use getCurrentBrowserType() from '../browser' for enhanced detection
  */
 export function detectBrowser(): Browser {
-  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest) {
-    const manifest = chrome.runtime.getManifest();
-    if (manifest.manifest_version === 3) {
-      return 'chrome';
+  // Use the new detection system if available
+  try {
+    return getCurrentBrowserType();
+  } catch {
+    // Fallback to legacy detection
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest) {
+      const manifest = chrome.runtime.getManifest();
+      if (manifest.manifest_version === 3) {
+        return 'chrome';
+      }
     }
+    
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      return 'firefox';
+    }
+    
+    if (typeof (globalThis as any).safari !== 'undefined') {
+      return 'safari';
+    }
+    
+    // Check for Edge
+    if (navigator.userAgent.includes('Edg/')) {
+      return 'edge';
+    }
+    
+    return 'unknown';
   }
-  
-  if (typeof browser !== 'undefined' && browser.runtime) {
-    return 'firefox';
-  }
-  
-  if (typeof (globalThis as any).safari !== 'undefined') {
-    return 'safari';
-  }
-  
-  // Check for Edge
-  if (navigator.userAgent.includes('Edg/')) {
-    return 'edge';
-  }
-  
-  return 'unknown';
 }
 
 /**

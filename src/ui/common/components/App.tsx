@@ -1,5 +1,6 @@
 import React, { StrictMode } from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
+import { AppContextProvider, useContextsInitialized } from '../../../contexts';
 
 interface AppProps {
   children: React.ReactNode;
@@ -8,8 +9,38 @@ interface AppProps {
 }
 
 /**
+ * Loading component shown while contexts are initializing
+ */
+const AppLoading: React.FC = () => (
+  <div className="tk-app-loading">
+    <div className="tk-loading-spinner"></div>
+    <span>Initializing TabKiller...</span>
+  </div>
+);
+
+/**
+ * App content wrapper that ensures contexts are initialized
+ */
+const AppContent: React.FC<{ children: React.ReactNode; context: string }> = ({ 
+  children, 
+  context 
+}) => {
+  const contextsInitialized = useContextsInitialized();
+
+  if (!contextsInitialized) {
+    return <AppLoading />;
+  }
+
+  return (
+    <div className={`tk-app tk-app--${context}`} data-context={context}>
+      {children}
+    </div>
+  );
+};
+
+/**
  * Base App component that wraps all extension UI contexts
- * Provides error boundaries, StrictMode, and context-specific configuration
+ * Provides error boundaries, StrictMode, context providers, and context-specific configuration
  */
 export const App: React.FC<AppProps> = ({ 
   children, 
@@ -19,18 +50,24 @@ export const App: React.FC<AppProps> = ({
   const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
     console.error(`Error in ${context} context:`, error, errorInfo);
     
-    // Could send error reports to background script
-    // messaging.sendMessage({ 
-    //   type: 'error-report', 
-    //   payload: { context, error: error.message, stack: error.stack } 
-    // });
+    // Send error reports to background script
+    if (chrome?.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ 
+        type: 'error-report', 
+        payload: { context, error: error.message, stack: error.stack, timestamp: Date.now() } 
+      }).catch(err => {
+        console.error('Failed to send error report:', err);
+      });
+    }
   };
 
   const renderApp = () => (
     <ErrorBoundary onError={handleError}>
-      <div className={`tk-app tk-app--${context}`} data-context={context}>
-        {children}
-      </div>
+      <AppContextProvider>
+        <AppContent context={context}>
+          {children}
+        </AppContent>
+      </AppContextProvider>
     </ErrorBoundary>
   );
 

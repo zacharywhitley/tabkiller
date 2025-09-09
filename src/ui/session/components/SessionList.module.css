@@ -1,0 +1,313 @@
+/**
+ * SessionList Component Styles
+ * Styles for the session list container and controls
+ */
+
+.sessionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-3) 0;
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+/* Bulk Selection */
+.bulkSelection {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.selectAllLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.selectAllCheckbox {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-gray-300);
+  border-radius: var(--border-radius-sm);
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.selectAllCheckbox:checked {
+  background: var(--color-primary-500);
+  border-color: var(--color-primary-500);
+}
+
+.selectionCount {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-gray-700);
+}
+
+/* View Mode Toggle */
+.viewModeToggle {
+  display: flex;
+  gap: var(--spacing-1);
+  border: 1px solid var(--color-gray-300);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-1);
+  background: var(--color-white);
+}
+
+/* Sort Controls */
+.sortControls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.sortSelect {
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--color-gray-300);
+  border-radius: var(--border-radius-md);
+  background: var(--color-white);
+  font-size: var(--text-sm);
+  color: var(--color-gray-700);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.sortSelect:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 2px var(--color-primary-100);
+}
+
+.sortIcon {
+  transition: transform 0.2s ease;
+}
+
+.sortIconDesc {
+  transform: rotate(180deg);
+}
+
+/* Bulk Actions */
+.bulkActions {
+  padding: var(--spacing-3);
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--border-radius-md);
+}
+
+.bulkActionsContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bulkActionsLabel {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-primary-700);
+}
+
+.bulkActionsButtons {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+/* Sessions Grid */
+.sessionsGrid {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.sessionsGrid--list {
+  grid-template-columns: 1fr;
+}
+
+.sessionsGrid--grid {
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+}
+
+.sessionsGrid--compact {
+  grid-template-columns: 1fr;
+  gap: var(--spacing-2);
+}
+
+/* Loading State */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8);
+  color: var(--color-gray-600);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-gray-300);
+  border-top: 3px solid var(--color-primary-500);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: var(--spacing-4);
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Empty State */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8);
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--color-gray-400);
+  margin-bottom: var(--spacing-4);
+}
+
+.emptyMessage {
+  font-size: var(--text-lg);
+  color: var(--color-gray-600);
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    gap: var(--spacing-3);
+    align-items: stretch;
+  }
+
+  .headerLeft,
+  .headerRight {
+    justify-content: space-between;
+  }
+
+  .viewModeToggle {
+    order: 1;
+  }
+
+  .sortControls {
+    order: 2;
+  }
+
+  .sessionsGrid--grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bulkActionsContent {
+    flex-direction: column;
+    gap: var(--spacing-2);
+    align-items: stretch;
+  }
+
+  .bulkActionsButtons {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .headerRight {
+    flex-direction: column;
+    gap: var(--spacing-2);
+  }
+
+  .sortControls {
+    width: 100%;
+  }
+
+  .sortSelect {
+    flex: 1;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .header {
+    border-bottom-color: var(--color-gray-700);
+  }
+
+  .selectAllCheckbox {
+    border-color: var(--color-gray-600);
+    background: var(--color-gray-800);
+  }
+
+  .selectAllCheckbox:checked {
+    background: var(--color-primary-400);
+    border-color: var(--color-primary-400);
+  }
+
+  .selectionCount {
+    color: var(--color-gray-300);
+  }
+
+  .viewModeToggle {
+    border-color: var(--color-gray-600);
+    background: var(--color-gray-800);
+  }
+
+  .sortSelect {
+    border-color: var(--color-gray-600);
+    background: var(--color-gray-800);
+    color: var(--color-gray-200);
+  }
+
+  .sortSelect:focus {
+    border-color: var(--color-primary-400);
+    box-shadow: 0 0 0 2px var(--color-primary-600);
+  }
+
+  .bulkActions {
+    background: var(--color-primary-900);
+    border-color: var(--color-primary-700);
+  }
+
+  .bulkActionsLabel {
+    color: var(--color-primary-300);
+  }
+
+  .loading {
+    color: var(--color-gray-400);
+  }
+
+  .spinner {
+    border-color: var(--color-gray-600);
+    border-top-color: var(--color-primary-400);
+  }
+
+  .emptyIcon {
+    color: var(--color-gray-600);
+  }
+
+  .emptyMessage {
+    color: var(--color-gray-400);
+  }
+}

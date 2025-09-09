@@ -1,0 +1,450 @@
+/**
+ * SessionStats Component Styles
+ * Styles for displaying session statistics and metrics
+ */
+
+.sessionStats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+/* Card Styles */
+.overviewCard,
+.currentSessionCard,
+.recordsCard,
+.tagsCard {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.activeCard {
+  border-left: 4px solid var(--color-success-500);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-4);
+  padding-bottom: var(--spacing-3);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.timeRangeLabel {
+  padding: var(--spacing-1) var(--spacing-2);
+  background-color: var(--color-gray-100);
+  color: var(--color-gray-700);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border-radius: var(--border-radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.activeIndicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) var(--spacing-2);
+  background-color: var(--color-success-100);
+  color: var(--color-success-700);
+  border-radius: var(--border-radius-full);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.activeIcon {
+  color: var(--color-success-500);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Stats Grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-4);
+}
+
+.statItem {
+  text-align: center;
+  padding: var(--spacing-3);
+  background-color: var(--color-gray-50);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-gray-200);
+  transition: all 0.2s ease;
+}
+
+.statItem:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.statValue {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-primary-600);
+  margin-bottom: var(--spacing-1);
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: var(--text-sm);
+  color: var(--color-gray-700);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--spacing-1);
+}
+
+.statSubtext {
+  font-size: var(--text-xs);
+  color: var(--color-gray-500);
+  font-style: italic;
+}
+
+/* Current Session */
+.currentSessionContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.sessionName {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.sessionDescription {
+  font-size: var(--text-sm);
+  color: var(--color-gray-600);
+  line-height: 1.5;
+}
+
+.sessionMetrics {
+  display: flex;
+  gap: var(--spacing-4);
+  justify-content: center;
+  padding: var(--spacing-3);
+  background-color: var(--color-success-50);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-success-200);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.metricValue {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-success-700);
+}
+
+.metricLabel {
+  font-size: var(--text-xs);
+  color: var(--color-success-600);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sessionTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  justify-content: center;
+}
+
+.sessionTag {
+  padding: var(--spacing-1) var(--spacing-2);
+  background-color: var(--color-primary-500);
+  color: white;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border-radius: var(--border-radius-full);
+}
+
+/* Records */
+.recordsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.record {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-3);
+  background-color: var(--color-gray-50);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-gray-200);
+}
+
+.recordLabel {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-gray-700);
+}
+
+.recordValue {
+  text-align: right;
+}
+
+.recordName {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-gray-900);
+  margin-bottom: var(--spacing-1);
+}
+
+.recordMetric {
+  font-size: var(--text-xs);
+  color: var(--color-primary-600);
+  font-weight: 600;
+}
+
+/* Tags */
+.tagsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.tagStat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-2);
+  background-color: var(--color-gray-50);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--color-gray-200);
+}
+
+.tagInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.tagColor {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tagName {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-gray-900);
+}
+
+.tagCount {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-primary-600);
+  background-color: var(--color-primary-100);
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--border-radius-full);
+  min-width: 24px;
+  text-align: center;
+}
+
+/* Empty State */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-8);
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--color-gray-400);
+  margin-bottom: var(--spacing-4);
+}
+
+.emptyTitle {
+  margin: 0 0 var(--spacing-2) 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-gray-700);
+}
+
+.emptyMessage {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-gray-500);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .sessionMetrics {
+    flex-direction: column;
+    gap: var(--spacing-2);
+  }
+
+  .metric {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .record {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-2);
+  }
+
+  .recordValue {
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cardHeader {
+    flex-direction: column;
+    gap: var(--spacing-2);
+    align-items: flex-start;
+  }
+
+  .sessionTags {
+    justify-content: flex-start;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .cardHeader {
+    border-bottom-color: var(--color-gray-700);
+  }
+
+  .cardTitle {
+    color: var(--color-gray-100);
+  }
+
+  .timeRangeLabel {
+    background-color: var(--color-gray-700);
+    color: var(--color-gray-300);
+  }
+
+  .activeIndicator {
+    background-color: var(--color-success-900);
+    color: var(--color-success-300);
+  }
+
+  .activeIcon {
+    color: var(--color-success-400);
+  }
+
+  .statItem {
+    background-color: var(--color-gray-800);
+    border-color: var(--color-gray-700);
+  }
+
+  .statValue {
+    color: var(--color-primary-400);
+  }
+
+  .statLabel {
+    color: var(--color-gray-300);
+  }
+
+  .statSubtext {
+    color: var(--color-gray-500);
+  }
+
+  .sessionName {
+    color: var(--color-gray-100);
+  }
+
+  .sessionDescription {
+    color: var(--color-gray-400);
+  }
+
+  .sessionMetrics {
+    background-color: var(--color-success-900);
+    border-color: var(--color-success-700);
+  }
+
+  .metricValue {
+    color: var(--color-success-300);
+  }
+
+  .metricLabel {
+    color: var(--color-success-400);
+  }
+
+  .record {
+    background-color: var(--color-gray-800);
+    border-color: var(--color-gray-700);
+  }
+
+  .recordLabel {
+    color: var(--color-gray-300);
+  }
+
+  .recordName {
+    color: var(--color-gray-100);
+  }
+
+  .recordMetric {
+    color: var(--color-primary-400);
+  }
+
+  .tagStat {
+    background-color: var(--color-gray-800);
+    border-color: var(--color-gray-700);
+  }
+
+  .tagName {
+    color: var(--color-gray-100);
+  }
+
+  .tagCount {
+    color: var(--color-primary-300);
+    background-color: var(--color-primary-800);
+  }
+
+  .emptyTitle {
+    color: var(--color-gray-300);
+  }
+
+  .emptyMessage {
+    color: var(--color-gray-500);
+  }
+
+  .emptyIcon {
+    color: var(--color-gray-600);
+  }
+}

@@ -163,6 +163,29 @@ export interface PrivacySettings {
   ssbIdentity?: string;
 }
 
+export interface MenuSettings {
+  enableContextMenus: boolean;
+  showIcons: boolean;
+  showShortcuts: boolean;
+  compactMode: boolean;
+  enableSubmenus: boolean;
+  groupSeparators: boolean;
+  maxDepth: number;
+  maxItemsPerGroup: number;
+  customMenuItems: string[]; // IDs of custom menu items
+  hiddenMenuItems: string[]; // IDs of hidden menu items
+  menuCustomizations: Array<{
+    itemId: string;
+    hidden: boolean;
+    priority?: number;
+    groupId?: string;
+    customName?: string;
+    customShortcut?: string;
+    userModified: boolean;
+    timestamp: number;
+  }>;
+}
+
 export interface UISettings {
   theme: 'light' | 'dark' | 'auto';
   compactMode: boolean;
@@ -171,6 +194,7 @@ export interface UISettings {
   defaultView: 'popup' | 'history' | 'sessions';
   animationsEnabled: boolean;
   keyboardShortcuts: Record<string, string>;
+  menu: MenuSettings;
 }
 
 export interface StorageSettings {
@@ -201,6 +225,7 @@ export type SettingsAction =
   | { type: 'UPDATE_GENERAL_SETTINGS'; payload: Partial<GeneralSettings> }
   | { type: 'UPDATE_PRIVACY_SETTINGS'; payload: Partial<PrivacySettings> }
   | { type: 'UPDATE_UI_SETTINGS'; payload: Partial<UISettings> }
+  | { type: 'UPDATE_MENU_SETTINGS'; payload: Partial<MenuSettings> }
   | { type: 'UPDATE_STORAGE_SETTINGS'; payload: Partial<StorageSettings> }
   | { type: 'SAVE_SETTINGS'; payload?: void }
   | { type: 'RESET_SETTINGS'; payload?: void }
@@ -314,6 +339,7 @@ export interface SettingsContextValue {
     updateGeneralSettings: (updates: Partial<GeneralSettings>) => void;
     updatePrivacySettings: (updates: Partial<PrivacySettings>) => void;
     updateUISettings: (updates: Partial<UISettings>) => void;
+    updateMenuSettings: (updates: Partial<MenuSettings>) => void;
     updateStorageSettings: (updates: Partial<StorageSettings>) => void;
     saveSettings: () => Promise<void>;
     resetSettings: () => Promise<void>;

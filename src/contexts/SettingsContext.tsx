@@ -56,6 +56,19 @@ const defaultUISettings: UISettings = {
     'start-session': 'Ctrl+Shift+S',
     'end-session': 'Ctrl+Shift+E',
     'capture-tabs': 'Ctrl+Shift+C'
+  },
+  menu: {
+    enableContextMenus: true,
+    showIcons: true,
+    showShortcuts: true,
+    compactMode: false,
+    enableSubmenus: true,
+    groupSeparators: true,
+    maxDepth: 3,
+    maxItemsPerGroup: 10,
+    customMenuItems: [],
+    hiddenMenuItems: [],
+    menuCustomizations: []
   }
 };
 
@@ -136,6 +149,24 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
           ui: {
             ...state.settings.ui,
             ...action.payload
+          },
+          lastModified: now
+        },
+        hasUnsavedChanges: true,
+        lastUpdated: now
+      };
+
+    case 'UPDATE_MENU_SETTINGS':
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          ui: {
+            ...state.settings.ui,
+            menu: {
+              ...state.settings.ui.menu,
+              ...action.payload
+            }
           },
           lastModified: now
         },
@@ -379,6 +410,26 @@ export const SettingsProvider: React.FC<ContextProviderProps> = ({ children }) =
     dispatch({ type: 'UPDATE_UI_SETTINGS', payload: updates });
   }, []);
 
+  const updateMenuSettings = useCallback((updates: Partial<MenuSettings>) => {
+    // Validate menu-specific settings
+    const errors: string[] = [];
+    
+    if (updates.maxDepth !== undefined && (updates.maxDepth < 1 || updates.maxDepth > 5)) {
+      errors.push('Menu max depth must be between 1 and 5');
+    }
+    
+    if (updates.maxItemsPerGroup !== undefined && (updates.maxItemsPerGroup < 1 || updates.maxItemsPerGroup > 20)) {
+      errors.push('Max items per group must be between 1 and 20');
+    }
+    
+    if (errors.length > 0) {
+      dispatch({ type: 'SET_ERROR', payload: `Menu validation failed: ${errors.join(', ')}` });
+      return;
+    }
+    
+    dispatch({ type: 'UPDATE_MENU_SETTINGS', payload: updates });
+  }, []);
+
   const updateStorageSettings = useCallback((updates: Partial<StorageSettings>) => {
     const errors = validateSettings({ storage: updates });
     if (errors.length > 0) {
@@ -559,6 +610,7 @@ export const SettingsProvider: React.FC<ContextProviderProps> = ({ children }) =
       updateGeneralSettings,
       updatePrivacySettings,
       updateUISettings,
+      updateMenuSettings,
       updateStorageSettings,
       saveSettings,
       resetSettings,

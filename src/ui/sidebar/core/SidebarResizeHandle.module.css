@@ -1,0 +1,68 @@
+/**
+ * Sidebar Resize Handle Styles
+ * CSS Module for the sidebar resize handle
+ */
+
+.handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  background-color: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  
+  /* Expand the hit area */
+  padding-right: 2px;
+  margin-right: -2px;
+  
+  /* Visual indicator */
+  border-right: 2px solid transparent;
+  transition: border-color var(--tk-duration-fast) var(--tk-ease-out);
+}
+
+.handle:hover {
+  border-right-color: var(--tk-accent-color);
+}
+
+.handle--resizing {
+  border-right-color: var(--tk-accent-color);
+  border-right-width: 3px;
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--tk-accent-color);
+  outline-offset: 2px;
+}
+
+/* ============================================================================= */
+/* RESPONSIVE BEHAVIOR */
+/* ============================================================================= */
+
+@media (max-width: 767px) {
+  .handle {
+    display: none; /* Hide on mobile */
+  }
+}
+
+/* ============================================================================= */
+/* HIGH CONTRAST */
+/* ============================================================================= */
+
+@media (prefers-contrast: high) {
+  .handle:hover,
+  .handle--resizing {
+    border-right-color: currentColor;
+  }
+}
+
+/* ============================================================================= */
+/* REDUCED MOTION */
+/* ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .handle {
+    transition: none;
+  }
+}

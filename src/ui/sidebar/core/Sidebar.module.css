@@ -1,0 +1,345 @@
+/**
+ * Sidebar Component Styles
+ * CSS Module for the main sidebar component with animations and responsive behavior
+ */
+
+.sidebar {
+  /* Layout */
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: var(--tk-sidebar-width);
+  z-index: var(--tk-sidebar-z-index);
+  
+  /* Visual */
+  background-color: var(--tk-sidebar-bg);
+  border-right: var(--tk-sidebar-border-width) solid var(--tk-sidebar-border);
+  box-shadow: var(--tk-sidebar-shadow);
+  
+  /* Typography */
+  font-size: var(--tk-sidebar-font-size);
+  line-height: var(--tk-sidebar-line-height);
+  
+  /* Structure */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  
+  /* Transitions */
+  transition: 
+    transform var(--tk-sidebar-transition-duration) var(--tk-sidebar-transition-easing),
+    width var(--tk-sidebar-transition-duration) var(--tk-sidebar-transition-easing),
+    box-shadow var(--tk-sidebar-transition-duration) var(--tk-sidebar-transition-easing);
+  
+  /* Initial state - closed */
+  transform: translateX(-100%);
+}
+
+/* ============================================================================= */
+/* STATE VARIATIONS */
+/* ============================================================================= */
+
+.sidebar--open {
+  transform: translateX(0);
+}
+
+.sidebar--collapsed {
+  width: var(--tk-sidebar-width-collapsed);
+}
+
+.sidebar--animating {
+  pointer-events: none;
+}
+
+.sidebar--animating * {
+  pointer-events: none;
+}
+
+/* Re-enable pointer events after animation */
+.sidebar--open:not(.sidebar--animating) {
+  pointer-events: auto;
+}
+
+.sidebar--open:not(.sidebar--animating) * {
+  pointer-events: auto;
+}
+
+/* ============================================================================= */
+/* RESPONSIVE BEHAVIOR */
+/* ============================================================================= */
+
+/* Desktop styles (default) */
+.sidebar--desktop {
+  position: relative;
+  transform: none;
+  box-shadow: none;
+  border-right: var(--tk-sidebar-border-width) solid var(--tk-border-color);
+}
+
+.sidebar--desktop.sidebar--open {
+  transform: none;
+}
+
+/* Tablet styles */
+.sidebar--tablet {
+  position: fixed;
+  z-index: var(--tk-sidebar-z-index);
+}
+
+.sidebar--tablet.sidebar--overlay {
+  box-shadow: var(--tk-sidebar-overlay-shadow);
+}
+
+/* Mobile styles */
+.sidebar--mobile {
+  position: fixed;
+  width: min(85vw, var(--tk-sidebar-width));
+  z-index: var(--tk-sidebar-z-index);
+  box-shadow: var(--tk-sidebar-overlay-shadow);
+}
+
+/* Overlay mode for mobile/tablet */
+.sidebar--overlay {
+  position: fixed;
+  z-index: var(--tk-z-modal);
+  box-shadow: var(--tk-shadow-xl);
+}
+
+/* ============================================================================= */
+/* RESIZABLE STYLES */
+/* ============================================================================= */
+
+.sidebar--resizable {
+  resize: horizontal;
+  min-width: var(--tk-sidebar-min-width);
+  max-width: var(--tk-sidebar-max-width);
+}
+
+.sidebar--resizable .resizeHandle {
+  display: block;
+}
+
+/* ============================================================================= */
+/* INNER STRUCTURE */
+/* ============================================================================= */
+
+.header {
+  flex-shrink: 0;
+  background-color: var(--tk-sidebar-header-bg);
+  border-bottom: 1px solid var(--tk-border-color);
+  z-index: 1;
+}
+
+.content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.footer {
+  flex-shrink: 0;
+  background-color: var(--tk-sidebar-footer-bg);
+  border-top: 1px solid var(--tk-border-color);
+}
+
+.resizeHandle {
+  display: none; /* Hidden by default, shown for resizable */
+}
+
+/* ============================================================================= */
+/* BACKDROP */
+/* ============================================================================= */
+
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: var(--tk-sidebar-backdrop-z-index);
+  
+  /* Fade in animation */
+  opacity: 0;
+  animation: fadeIn var(--tk-duration-fast) var(--tk-ease-out) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ============================================================================= */
+/* FOCUS STYLES */
+/* ============================================================================= */
+
+.sidebar:focus-visible {
+  outline: 2px solid var(--tk-accent-color);
+  outline-offset: -2px;
+}
+
+/* ============================================================================= */
+/* HIGH CONTRAST MODE */
+/* ============================================================================= */
+
+@media (prefers-contrast: high) {
+  .sidebar {
+    border-right-width: 2px;
+    border-right-color: currentColor;
+  }
+  
+  .header,
+  .footer {
+    border-color: currentColor;
+  }
+  
+  .backdrop {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* ============================================================================= */
+/* REDUCED MOTION */
+/* ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .backdrop {
+    transition: none;
+    animation: none;
+  }
+  
+  .sidebar--animating {
+    pointer-events: auto;
+  }
+  
+  .sidebar--animating * {
+    pointer-events: auto;
+  }
+}
+
+/* ============================================================================= */
+/* DARK THEME ADJUSTMENTS */
+/* ============================================================================= */
+
+.tk-theme-dark .sidebar {
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.tk-theme-dark .sidebar--overlay {
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.tk-theme-dark .backdrop {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+/* ============================================================================= */
+/* PRINT STYLES */
+/* ============================================================================= */
+
+@media print {
+  .sidebar {
+    display: none;
+  }
+  
+  .backdrop {
+    display: none;
+  }
+}
+
+/* ============================================================================= */
+/* BREAKPOINT-SPECIFIC RULES */
+/* ============================================================================= */
+
+/* Mobile portrait */
+@media (max-width: 767px) and (orientation: portrait) {
+  .sidebar--mobile {
+    width: 90vw;
+  }
+}
+
+/* Mobile landscape */
+@media (max-width: 767px) and (orientation: landscape) {
+  .sidebar--mobile {
+    width: 70vw;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar--tablet {
+    width: min(400px, 50vw);
+  }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .sidebar--desktop {
+    position: relative;
+    transform: none;
+  }
+  
+  .sidebar--desktop .backdrop {
+    display: none;
+  }
+}
+
+/* Large desktop */
+@media (min-width: 1440px) {
+  .sidebar--desktop {
+    max-width: 480px;
+  }
+}
+
+/* ============================================================================= */
+/* ANIMATION PERFORMANCE OPTIMIZATIONS */
+/* ============================================================================= */
+
+.sidebar {
+  /* Enable GPU acceleration */
+  will-change: transform;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.sidebar--animating {
+  /* Force hardware acceleration during animations */
+  transform: translateZ(0);
+}
+
+/* Clean up after animations */
+.sidebar:not(.sidebar--animating) {
+  will-change: auto;
+}
+
+/* ============================================================================= */
+/* CONTAINER QUERIES (Progressive Enhancement) */
+/* ============================================================================= */
+
+@supports (container-type: inline-size) {
+  .sidebar {
+    container-type: inline-size;
+    container-name: sidebar;
+  }
+  
+  @container sidebar (max-width: 280px) {
+    .header,
+    .footer {
+      padding: var(--tk-spacing-xs);
+    }
+  }
+  
+  @container sidebar (min-width: 400px) {
+    .header,
+    .footer {
+      padding: var(--tk-spacing-lg);
+    }
+  }
+}

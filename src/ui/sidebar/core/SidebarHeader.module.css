@@ -1,0 +1,221 @@
+/**
+ * Sidebar Header Styles
+ * CSS Module for the sidebar header component
+ */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--tk-spacing-md);
+  min-height: 60px;
+  background-color: var(--tk-sidebar-header-bg);
+  border-bottom: 1px solid var(--tk-border-color);
+  position: relative;
+}
+
+/* ============================================================================= */
+/* TITLE SECTION */
+/* ============================================================================= */
+
+.titleSection {
+  flex: 1;
+  min-width: 0; /* Allow text truncation */
+}
+
+.title {
+  margin: 0;
+  font-size: var(--tk-font-size-lg);
+  font-weight: var(--tk-font-weight-semibold);
+  color: var(--tk-text-primary);
+  line-height: var(--tk-line-height-tight);
+  
+  /* Truncate long titles */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================================= */
+/* ACTIONS SECTION */
+/* ============================================================================= */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--tk-spacing-xs);
+  margin-left: var(--tk-spacing-sm);
+}
+
+.actionButton {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--tk-border-radius-sm);
+  transition: all var(--tk-duration-fast) var(--tk-ease-out);
+}
+
+.actionButton:hover {
+  background-color: var(--tk-bg-tertiary);
+  transform: scale(1.05);
+}
+
+.actionButton:active {
+  transform: scale(0.98);
+}
+
+/* ============================================================================= */
+/* CLOSE BUTTON */
+/* ============================================================================= */
+
+.closeButton {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin-left: var(--tk-spacing-sm);
+  border-radius: var(--tk-border-radius-sm);
+  transition: all var(--tk-duration-fast) var(--tk-ease-out);
+  color: var(--tk-text-secondary);
+}
+
+.closeButton:hover {
+  background-color: var(--tk-danger-color);
+  color: white;
+  transform: scale(1.05);
+}
+
+.closeButton:active {
+  transform: scale(0.98);
+}
+
+/* ============================================================================= */
+/* HEADER VARIATIONS */
+/* ============================================================================= */
+
+.header--with-actions {
+  padding-right: var(--tk-spacing-sm);
+}
+
+.header--with-close {
+  padding-right: var(--tk-spacing-sm);
+}
+
+.header--with-actions.header--with-close {
+  padding-right: var(--tk-spacing-xs);
+}
+
+/* ============================================================================= */
+/* RESPONSIVE BEHAVIOR */
+/* ============================================================================= */
+
+/* Mobile adjustments */
+@media (max-width: 767px) {
+  .header {
+    padding: var(--tk-spacing-sm) var(--tk-spacing-md);
+    min-height: 56px;
+  }
+  
+  .title {
+    font-size: var(--tk-font-size-base);
+  }
+  
+  .actionButton,
+  .closeButton {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* Collapsed sidebar */
+@media (max-width: 280px) {
+  .header {
+    padding: var(--tk-spacing-sm);
+  }
+  
+  .title {
+    font-size: var(--tk-font-size-sm);
+  }
+  
+  .actions {
+    display: none; /* Hide actions in very narrow sidebars */
+  }
+}
+
+/* ============================================================================= */
+/* ACCESSIBILITY */
+/* ============================================================================= */
+
+.header:focus-visible {
+  outline: 2px solid var(--tk-accent-color);
+  outline-offset: -2px;
+}
+
+.actionButton:focus-visible,
+.closeButton:focus-visible {
+  outline: 2px solid var(--tk-accent-color);
+  outline-offset: 2px;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .header {
+    border-bottom-width: 2px;
+    border-bottom-color: currentColor;
+  }
+  
+  .actionButton,
+  .closeButton {
+    border: 1px solid currentColor;
+  }
+  
+  .closeButton:hover {
+    background-color: var(--tk-text-primary);
+    color: var(--tk-bg-primary);
+  }
+}
+
+/* ============================================================================= */
+/* DARK THEME */
+/* ============================================================================= */
+
+.tk-theme-dark .closeButton:hover {
+  background-color: var(--tk-danger-color);
+  color: white;
+}
+
+/* ============================================================================= */
+/* ANIMATION STATES */
+/* ============================================================================= */
+
+.header {
+  transition: padding var(--tk-duration-fast) var(--tk-ease-out);
+}
+
+.actionButton,
+.closeButton {
+  transition: 
+    background-color var(--tk-duration-fast) var(--tk-ease-out),
+    color var(--tk-duration-fast) var(--tk-ease-out),
+    transform var(--tk-duration-fast) var(--tk-ease-out);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .header,
+  .actionButton,
+  .closeButton {
+    transition: none;
+  }
+  
+  .actionButton:hover,
+  .closeButton:hover {
+    transform: none;
+  }
+  
+  .actionButton:active,
+  .closeButton:active {
+    transform: none;
+  }
+}

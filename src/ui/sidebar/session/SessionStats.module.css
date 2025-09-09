@@ -1,0 +1,92 @@
+/**
+ * Session Stats Styles
+ * CSS Module for session statistics display
+ */
+
+.stats {
+  background-color: var(--tk-bg-primary);
+  border-radius: var(--tk-border-radius-sm);
+  border: 1px solid var(--tk-border-color);
+  padding: var(--tk-spacing-sm);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: var(--tk-spacing-sm);
+}
+
+.statItem {
+  text-align: center;
+  padding: var(--tk-spacing-xs);
+  background-color: var(--tk-bg-secondary);
+  border-radius: var(--tk-border-radius-sm);
+  transition: background-color var(--tk-duration-fast) var(--tk-ease-out);
+}
+
+.statItem:hover {
+  background-color: var(--tk-bg-tertiary);
+}
+
+.statValue {
+  font-size: var(--tk-font-size-lg);
+  font-weight: var(--tk-font-weight-bold);
+  color: var(--tk-accent-color);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.statLabel {
+  font-size: var(--tk-font-size-xs);
+  color: var(--tk-text-secondary);
+  line-height: 1.2;
+}
+
+/* ============================================================================= */
+/* RESPONSIVE BEHAVIOR */
+/* ============================================================================= */
+
+@media (max-width: 767px) {
+  .stats {
+    padding: var(--tk-spacing-xs);
+  }
+  
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--tk-spacing-xs);
+  }
+  
+  .statValue {
+    font-size: var(--tk-font-size-base);
+  }
+  
+  .statLabel {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 280px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .statItem {
+    padding: 2px;
+  }
+}
+
+/* ============================================================================= */
+/* ACCESSIBILITY */
+/* ============================================================================= */
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .stats {
+    border-width: 2px;
+    border-color: currentColor;
+  }
+  
+  .statItem {
+    border: 1px solid currentColor;
+  }
+}

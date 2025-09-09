@@ -1,0 +1,90 @@
+/**
+ * Sidebar Footer Styles
+ * CSS Module for the sidebar footer component
+ */
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--tk-sidebar-footer-bg);
+  border-top: 1px solid var(--tk-border-color);
+  padding: var(--tk-spacing-sm) var(--tk-spacing-md);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tk-spacing-xs);
+  align-items: center;
+  justify-content: center;
+}
+
+.actionButton {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: var(--tk-font-size-xs);
+  height: 36px;
+}
+
+/* ============================================================================= */
+/* FOOTER VARIATIONS */
+/* ============================================================================= */
+
+.footer--with-labels .actions {
+  flex-direction: column;
+  gap: var(--tk-spacing-sm);
+}
+
+.footer--with-labels .actionButton {
+  width: 100%;
+  justify-content: flex-start;
+  gap: var(--tk-spacing-sm);
+}
+
+.footer--compact .actions {
+  flex-direction: row;
+}
+
+.footer--compact .actionButton {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: var(--tk-border-radius);
+}
+
+/* ============================================================================= */
+/* RESPONSIVE BEHAVIOR */
+/* ============================================================================= */
+
+@media (max-width: 767px) {
+  .footer {
+    padding: var(--tk-spacing-xs) var(--tk-spacing-sm);
+  }
+  
+  .actionButton {
+    height: 32px;
+    font-size: var(--tk-font-size-xs);
+  }
+  
+  .footer--compact .actionButton {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* ============================================================================= */
+/* ACCESSIBILITY */
+/* ============================================================================= */
+
+.footer:focus-visible {
+  outline: 2px solid var(--tk-accent-color);
+  outline-offset: -2px;
+}
+
+@media (prefers-contrast: high) {
+  .footer {
+    border-top-width: 2px;
+    border-top-color: currentColor;
+  }
+}

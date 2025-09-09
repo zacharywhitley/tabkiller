@@ -1,0 +1,167 @@
+/**
+ * Session Display Styles
+ * CSS Module for session display components
+ */
+
+.display {
+  background-color: var(--tk-bg-primary);
+  border-radius: var(--tk-border-radius-sm);
+  border: 1px solid var(--tk-border-color);
+  overflow: hidden;
+}
+
+/* ============================================================================= */
+/* CURRENT SESSION DISPLAY */
+/* ============================================================================= */
+
+.display--current .sessionInfo {
+  padding: var(--tk-spacing-sm);
+}
+
+.sessionTitle {
+  font-weight: var(--tk-font-weight-medium);
+  color: var(--tk-text-primary);
+  font-size: var(--tk-font-size-sm);
+  margin-bottom: var(--tk-spacing-xs);
+}
+
+.sessionMeta {
+  display: flex;
+  gap: var(--tk-spacing-sm);
+  color: var(--tk-text-secondary);
+  font-size: var(--tk-font-size-xs);
+  margin-bottom: var(--tk-spacing-xs);
+}
+
+.tabCount,
+.duration {
+  flex-shrink: 0;
+}
+
+.tags {
+  display: flex;
+  gap: var(--tk-spacing-xs);
+  flex-wrap: wrap;
+}
+
+.tag {
+  padding: 2px var(--tk-spacing-xs);
+  border-radius: var(--tk-border-radius-sm);
+  color: white;
+  font-size: var(--tk-font-size-xs);
+  font-weight: var(--tk-font-weight-medium);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================================================= */
+/* SESSIONS LIST DISPLAY */
+/* ============================================================================= */
+
+.display--list .sessionsList {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sessionItem {
+  padding: var(--tk-spacing-sm);
+  border-bottom: 1px solid var(--tk-border-color);
+  transition: background-color var(--tk-duration-fast) var(--tk-ease-out);
+  cursor: pointer;
+}
+
+.sessionItem:hover {
+  background-color: var(--tk-bg-secondary);
+}
+
+.sessionItem:last-child {
+  border-bottom: none;
+}
+
+.sessionName {
+  font-size: var(--tk-font-size-sm);
+  font-weight: var(--tk-font-weight-medium);
+  color: var(--tk-text-primary);
+  margin-bottom: 2px;
+  
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionSummary {
+  font-size: var(--tk-font-size-xs);
+  color: var(--tk-text-secondary);
+}
+
+/* ============================================================================= */
+/* EMPTY STATE */
+/* ============================================================================= */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--tk-spacing-lg);
+  text-align: center;
+}
+
+.emptyIcon {
+  font-size: 24px;
+  margin-bottom: var(--tk-spacing-xs);
+  opacity: 0.5;
+}
+
+.emptyText {
+  margin: 0;
+  color: var(--tk-text-secondary);
+  font-size: var(--tk-font-size-xs);
+  font-style: italic;
+}
+
+/* ============================================================================= */
+/* RESPONSIVE BEHAVIOR */
+/* ============================================================================= */
+
+@media (max-width: 767px) {
+  .display--current .sessionInfo {
+    padding: var(--tk-spacing-xs);
+  }
+  
+  .sessionTitle {
+    font-size: var(--tk-font-size-xs);
+  }
+  
+  .sessionItem {
+    padding: var(--tk-spacing-xs);
+  }
+  
+  .emptyState {
+    padding: var(--tk-spacing-md);
+  }
+  
+  .emptyIcon {
+    font-size: 20px;
+  }
+}
+
+/* ============================================================================= */
+/* ACCESSIBILITY */
+/* ============================================================================= */
+
+.sessionItem:focus-visible {
+  outline: 2px solid var(--tk-accent-color);
+  outline-offset: -2px;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .display {
+    border-width: 2px;
+    border-color: currentColor;
+  }
+  
+  .sessionItem {
+    border-bottom-color: currentColor;
+  }
+}

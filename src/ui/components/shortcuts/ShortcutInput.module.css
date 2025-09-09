@@ -1,0 +1,217 @@
+/* ShortcutInput Styles */
+
+.shortcutInputContainer {
+  position: relative;
+  width: 100%;
+}
+
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.shortcutInput {
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px solid #e1e5e9;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  background-color: #ffffff;
+  color: #2d3748;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+  outline: none;
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.shortcutInput:hover:not(.disabled) {
+  border-color: #cbd5e0;
+}
+
+.shortcutInput:focus:not(.disabled) {
+  border-color: #3182ce;
+  box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.1);
+}
+
+.shortcutInput.recording {
+  border-color: #38a169;
+  background-color: #f0fff4;
+  box-shadow: 0 0 0 3px rgba(56, 161, 105, 0.1);
+  animation: pulse 1.5s infinite;
+}
+
+.shortcutInput.invalid {
+  border-color: #e53e3e;
+  background-color: #fff5f5;
+}
+
+.shortcutInput.invalid:focus {
+  box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.1);
+}
+
+.shortcutInput.disabled {
+  background-color: #f7fafc;
+  color: #a0aec0;
+  cursor: not-allowed;
+}
+
+.shortcutInput::placeholder {
+  color: #a0aec0;
+  font-style: italic;
+}
+
+.clearButton {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #a0aec0;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.clearButton:hover {
+  background-color: #edf2f7;
+  color: #4a5568;
+}
+
+.clearButton:active {
+  background-color: #e2e8f0;
+}
+
+.recordingIndicator {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: #38a169;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 0 0 6px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 10;
+  animation: slideDown 0.2s ease-out;
+}
+
+.errorMessage {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: #e53e3e;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 0 0 6px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 10;
+  margin-top: 2px;
+  animation: slideDown 0.2s ease-out;
+}
+
+/* Animations */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 3px rgba(56, 161, 105, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(56, 161, 105, 0.05);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgba(56, 161, 105, 0.1);
+  }
+}
+
+@keyframes slideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .shortcutInput {
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+  }
+
+  .shortcutInput:hover:not(.disabled) {
+    border-color: #718096;
+  }
+
+  .shortcutInput:focus:not(.disabled) {
+    border-color: #63b3ed;
+    box-shadow: 0 0 0 3px rgba(99, 179, 237, 0.1);
+  }
+
+  .shortcutInput.recording {
+    background-color: #1a2e1a;
+    border-color: #68d391;
+  }
+
+  .shortcutInput.invalid {
+    background-color: #2d1b1b;
+    border-color: #fc8181;
+  }
+
+  .shortcutInput.disabled {
+    background-color: #1a202c;
+    color: #718096;
+  }
+
+  .shortcutInput::placeholder {
+    color: #718096;
+  }
+
+  .clearButton {
+    color: #718096;
+  }
+
+  .clearButton:hover {
+    background-color: #4a5568;
+    color: #e2e8f0;
+  }
+
+  .clearButton:active {
+    background-color: #2d3748;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .shortcutInput {
+    border-width: 3px;
+  }
+
+  .shortcutInput:focus:not(.disabled) {
+    box-shadow: 0 0 0 4px rgba(49, 130, 206, 0.3);
+  }
+
+  .shortcutInput.recording {
+    box-shadow: 0 0 0 4px rgba(56, 161, 105, 0.3);
+  }
+
+  .shortcutInput.invalid {
+    box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.3);
+  }
+}

@@ -48,6 +48,43 @@
     "128": "icons/icon-128.png"
   },
   "options_page": "options/options.html",
+  "commands": {
+    "quick-search": {
+      "suggested_key": {
+        "default": "Ctrl+K",
+        "mac": "Command+K"
+      },
+      "description": "Open quick search for tabs and history"
+    },
+    "save-session": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Save current browsing session"
+    },
+    "close-duplicate-tabs": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+D",
+        "mac": "Command+Shift+D"
+      },
+      "description": "Close duplicate tabs in current window"
+    },
+    "open-settings": {
+      "suggested_key": {
+        "default": "Ctrl+Comma",
+        "mac": "Command+Comma"
+      },
+      "description": "Open TabKiller settings"
+    },
+    "toggle-extension": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+T",
+        "mac": "Command+Shift+T"
+      },
+      "description": "Enable/disable TabKiller extension"
+    }
+  },
   "web_accessible_resources": [
     {
       "resources": [

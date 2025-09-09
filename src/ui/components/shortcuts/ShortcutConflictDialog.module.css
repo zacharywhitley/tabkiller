@@ -1,0 +1,402 @@
+/* ShortcutConflictDialog Styles */
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideIn 0.2s ease-out;
+}
+
+.card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 24px 0 24px;
+  margin-bottom: 20px;
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #a0aec0;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease-in-out;
+  line-height: 1;
+}
+
+.closeButton:hover {
+  background-color: #f7fafc;
+  color: #4a5568;
+}
+
+.content {
+  padding: 0 24px 24px 24px;
+}
+
+.commandInfo {
+  background-color: #f7fafc;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid #3182ce;
+}
+
+.commandName {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 8px;
+}
+
+.shortcutDisplay {
+  display: flex;
+  align-items: center;
+}
+
+.shortcutCode {
+  background-color: #ffffff;
+  color: #4a5568;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+}
+
+.conflictsList {
+  margin-bottom: 20px;
+}
+
+.conflictsTitle {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.conflictItem {
+  background-color: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border-left-width: 4px;
+}
+
+.conflictItem.error {
+  background-color: #fed7d7;
+  border-color: #feb2b2;
+  border-left-color: #e53e3e;
+}
+
+.conflictItem.warning {
+  background-color: #fef5e7;
+  border-color: #f6e05e;
+  border-left-color: #d69e2e;
+}
+
+.conflictItem.info {
+  background-color: #e6fffa;
+  border-color: #81e6d9;
+  border-left-color: #38b2ac;
+}
+
+.conflictHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.conflictIcon {
+  font-size: 16px;
+}
+
+.conflictType {
+  font-weight: 600;
+  color: #2d3748;
+  flex: 1;
+}
+
+.conflictSeverity {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.conflictItem.error .conflictSeverity {
+  background-color: #e53e3e;
+  color: white;
+}
+
+.conflictItem.warning .conflictSeverity {
+  background-color: #d69e2e;
+  color: white;
+}
+
+.conflictItem.info .conflictSeverity {
+  background-color: #38b2ac;
+  color: white;
+}
+
+.conflictDetails {
+  margin-top: 8px;
+}
+
+.conflictSuggestion {
+  color: #4a5568;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.conflictTarget {
+  color: #718096;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.conflictTarget strong {
+  color: #2d3748;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.errorWarning {
+  background-color: #fed7d7;
+  border: 1px solid #feb2b2;
+  color: #c53030;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.warningNotice {
+  background-color: #fef5e7;
+  border: 1px solid #f6e05e;
+  color: #b7791f;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 20px 24px 24px 24px;
+  border-top: 1px solid #e2e8f0;
+  background-color: #f7fafc;
+}
+
+.warningButton {
+  background-color: #d69e2e !important;
+  border-color: #d69e2e !important;
+}
+
+.warningButton:hover {
+  background-color: #b7791f !important;
+  border-color: #b7791f !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  0% {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 640px) {
+  .overlay {
+    padding: 16px;
+  }
+
+  .header {
+    padding: 20px 20px 0 20px;
+  }
+
+  .content {
+    padding: 0 20px 20px 20px;
+  }
+
+  .actions {
+    padding: 16px 20px 20px 20px;
+    flex-direction: column;
+  }
+
+  .conflictHeader {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .conflictType {
+    flex: none;
+    width: 100%;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .card {
+    background-color: #2d3748;
+  }
+
+  .title {
+    color: #e2e8f0;
+  }
+
+  .closeButton {
+    color: #a0aec0;
+  }
+
+  .closeButton:hover {
+    background-color: #4a5568;
+    color: #e2e8f0;
+  }
+
+  .commandInfo {
+    background-color: #1a202c;
+    border-left-color: #63b3ed;
+  }
+
+  .commandName {
+    color: #e2e8f0;
+  }
+
+  .shortcutCode {
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+  }
+
+  .conflictsTitle {
+    color: #e2e8f0;
+  }
+
+  .conflictItem {
+    background-color: #1a202c;
+    border-color: #4a5568;
+  }
+
+  .conflictItem.error {
+    background-color: #2d1b1b;
+    border-color: #fc8181;
+    border-left-color: #fc8181;
+  }
+
+  .conflictItem.warning {
+    background-color: #2d2314;
+    border-color: #f6e05e;
+    border-left-color: #f6e05e;
+  }
+
+  .conflictItem.info {
+    background-color: #1a2e2e;
+    border-color: #81e6d9;
+    border-left-color: #81e6d9;
+  }
+
+  .conflictType {
+    color: #e2e8f0;
+  }
+
+  .conflictSuggestion {
+    color: #a0aec0;
+  }
+
+  .conflictTarget {
+    color: #718096;
+  }
+
+  .conflictTarget strong {
+    color: #e2e8f0;
+  }
+
+  .errorWarning {
+    background-color: #2d1b1b;
+    border-color: #fc8181;
+    color: #fc8181;
+  }
+
+  .warningNotice {
+    background-color: #2d2314;
+    border-color: #f6e05e;
+    color: #f6e05e;
+  }
+
+  .actions {
+    border-top-color: #4a5568;
+    background-color: #1a202c;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .conflictItem {
+    border-width: 2px;
+    border-left-width: 6px;
+  }
+
+  .card {
+    box-shadow: 0 0 0 2px #000000;
+  }
+
+  .shortcutCode {
+    border-width: 2px;
+  }
+}

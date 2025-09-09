@@ -1,0 +1,515 @@
+/**
+ * Timeline Visualization Styles
+ * Git-style timeline visualization with session grouping
+ */
+
+/* =============================================================================
+   MAIN CONTAINER
+   ============================================================================= */
+
+.timeline-visualization {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.timeline-controls {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.timeline-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.timeline-announcements {
+  /* Screen reader announcements */
+}
+
+/* =============================================================================
+   TIMELINE CONTROLS
+   ============================================================================= */
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary, #f8fafc);
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  font-size: 14px;
+  gap: 16px;
+}
+
+.controls-left,
+.controls-center,
+.controls-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.controls-left {
+  flex: 1;
+}
+
+.controls-center {
+  flex: 0 0 auto;
+}
+
+.controls-right {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-label {
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Zoom Controls */
+.zoom-controls .zoom-buttons {
+  display: flex;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.zoom-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: none;
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-secondary, #475569);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-right: 1px solid var(--border-color, #e2e8f0);
+}
+
+.zoom-button:last-child {
+  border-right: none;
+}
+
+.zoom-button:hover {
+  background: var(--bg-accent, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+.zoom-button.active {
+  background: var(--state-selected, #3b82f6);
+  color: white;
+}
+
+.zoom-icon {
+  font-size: 14px;
+}
+
+.zoom-label {
+  font-weight: 500;
+}
+
+/* View Controls */
+.view-controls .view-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.view-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-secondary, #475569);
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.view-button:hover:not(:disabled) {
+  background: var(--bg-accent, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+.view-button.active {
+  background: var(--state-selected, #3b82f6);
+  color: white;
+  border-color: var(--state-selected, #3b82f6);
+}
+
+.view-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Date Range Controls */
+.date-range-display {
+  position: relative;
+}
+
+.date-range-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-primary, #ffffff);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.date-range-button:hover {
+  background: var(--bg-accent, #f1f5f9);
+  border-color: var(--state-hover, #cbd5e1);
+}
+
+.date-range-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.date-range-label {
+  font-size: 10px;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.date-range-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #0f172a);
+}
+
+.date-range-span {
+  font-size: 11px;
+  color: var(--text-secondary, #475569);
+}
+
+.date-range-arrow {
+  color: var(--text-muted, #94a3b8);
+  transition: transform 0.15s ease;
+}
+
+/* Date Range Picker */
+.date-range-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  padding: 16px;
+  min-width: 320px;
+  margin-top: 4px;
+}
+
+.picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.picker-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+
+.picker-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.picker-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.input-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+}
+
+.input-group input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--text-primary, #0f172a);
+}
+
+.picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.picker-button {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.picker-button.primary {
+  background: var(--state-selected, #3b82f6);
+  color: white;
+  border-color: var(--state-selected, #3b82f6);
+}
+
+.picker-button.secondary {
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-secondary, #475569);
+}
+
+.quick-ranges {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+.quick-ranges button {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text-secondary, #475569);
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Selection Info */
+.selection-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-accent, #f1f5f9);
+  border-radius: 4px;
+}
+
+.selection-count {
+  font-size: 12px;
+  color: var(--text-primary, #0f172a);
+  font-weight: 500;
+}
+
+.clear-selection-button {
+  border: none;
+  background: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.clear-selection-button:hover {
+  background: var(--state-hover, #e2e8f0);
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-secondary, #475569);
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-button:hover {
+  background: var(--bg-accent, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+/* Accessibility */
+.accessibility-controls .accessibility-button {
+  padding: 6px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-secondary, #475569);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.keyboard-shortcuts-hint {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--text-muted, #94a3b8);
+  background: var(--bg-primary, #ffffff);
+  padding: 4px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  opacity: 0.7;
+}
+
+/* =============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================= */
+
+@media (max-width: 768px) {
+  .timeline-controls {
+    flex-direction: column;
+    gap: 12px;
+    padding: 8px 12px;
+  }
+
+  .controls-left,
+  .controls-center,
+  .controls-right {
+    flex: none;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .zoom-button .zoom-label,
+  .view-button .view-label {
+    display: none;
+  }
+
+  .date-range-picker {
+    left: -50%;
+    transform: translateX(25%);
+  }
+}
+
+/* =============================================================================
+   HIGH CONTRAST MODE
+   ============================================================================= */
+
+@media (prefers-contrast: high) {
+  .timeline-visualization {
+    border-width: 2px;
+  }
+
+  .zoom-button,
+  .view-button,
+  .action-button {
+    border-width: 2px;
+  }
+
+  .zoom-button.active,
+  .view-button.active {
+    outline: 2px solid var(--text-primary, #000000);
+    outline-offset: 2px;
+  }
+}
+
+/* =============================================================================
+   REDUCED MOTION
+   ============================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-visualization *,
+  .timeline-visualization *::before,
+  .timeline-visualization *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* =============================================================================
+   FOCUS INDICATORS
+   ============================================================================= */
+
+.timeline-visualization button:focus,
+.timeline-visualization input:focus {
+  outline: 2px solid var(--state-selected, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Remove default focus styles in favor of custom ones */
+.timeline-visualization button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* =============================================================================
+   DARK MODE
+   ============================================================================= */
+
+@media (prefers-color-scheme: dark) {
+  .timeline-visualization {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-accent: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #64748b;
+    --border-color: #334155;
+    --state-selected: #3b82f6;
+    --state-hover: #475569;
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "temporal-graph-spike",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Throwaway spike for TabKiller's Visit-centric temporal graph schema",
+  "type": "module",
+  "scripts": {
+    "start": "tsx run.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

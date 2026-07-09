@@ -1,18 +1,30 @@
 ---
 created: 2025-09-05T01:40:49Z
-last_updated: 2025-09-05T01:40:49Z
-version: 1.0
+last_updated: 2026-07-09T21:59:33Z
+version: 2.0
 author: Claude Code PM System
 ---
 
 # Technology Context
 
-## Current Technology Stack
+## Currently Installed (per `package.json`)
 
-### Development Environment
-- **Git:** Repository version control
-- **GitHub:** Remote repository and issue tracking
-- **Claude Code PM:** Structured development workflow system
+### Runtime Dependencies
+- **react ^19.1.1 / react-dom ^19.1.1** — UI framework
+- **react-router-dom ^7.8.2** — client-side routing (with legacy `@types/react-router-dom ^5.3.3` — mismatched major versions, worth cleaning up)
+- **clsx ^2.1.1** — className composition
+- **webextension-polyfill ^0.10.0** — cross-browser extension API shim
+
+### Dev Toolchain
+- **TypeScript 5.2** (`tsc --noEmit` for type-check)
+- **Webpack 5** + `webpack-cli`, `webpack-dev-server`, `ts-loader`, `css-loader`, `style-loader`, `html-webpack-plugin`, `copy-webpack-plugin`
+- **Jest 29** with `ts-jest` and `jest-environment-jsdom 30` (major-version drift with Jest 29)
+- **ESLint 8** + `@typescript-eslint/*`, `eslint-config-prettier`, `eslint-plugin-prettier`
+- **Prettier 3**
+- **cross-env**, **npm-run-all**, **concurrently**, **rimraf**
+
+### Not Yet Installed (mentioned in original plan)
+NeoDB driver, SSB client, SingleFile, LLM SDKs, Puppeteer, Playwright, `web-ext` — none are in `package.json` yet. Database/sync layer scaffolded in `src/database/` and `src/crypto/` but no external driver dependency is committed. This is the deferred decision point that the `refactor-neodb-and-ssb-to-gundb` PRD addresses.
 
 ### Documentation Tools
 - **Markdown:** Documentation format

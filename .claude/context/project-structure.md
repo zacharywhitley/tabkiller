@@ -1,7 +1,7 @@
 ---
 created: 2025-09-05T01:40:49Z
-last_updated: 2025-09-05T01:40:49Z
-version: 1.0
+last_updated: 2026-07-09T21:59:33Z
+version: 2.0
 author: Claude Code PM System
 ---
 
@@ -49,33 +49,48 @@ tabkiller/
 └── scripts/                  # Utility scripts
 ```
 
-## Planned Project Structure
+## Actual Project Structure (as of 2026-07-09)
 
-### Browser Extension Architecture
+### Browser Extension Source (`src/`)
 ```
 src/
-├── manifest.json             # Extension manifest (V3)
-├── background/               # Service worker scripts
-│   ├── main.js              # Main background script
-│   └── database.js          # NeoDB integration
-├── content/                  # Content scripts
-│   ├── tracker.js           # Page tracking logic
-│   └── injector.js          # SingleFile integration
-├── popup/                    # Extension popup UI
-│   ├── popup.html
-│   ├── popup.js
-│   └── popup.css
-├── options/                  # Settings page
-│   ├── options.html
-│   ├── options.js
-│   └── options.css
-├── lib/                     # Shared libraries
-│   ├── crypto.js            # Encryption utilities
-│   ├── ssb.js              # SSB protocol integration
-│   └── llm.js              # LLM integration
-└── assets/                  # Static assets
-    ├── icons/              # Extension icons
-    └── styles/             # Shared CSS
+├── adapters/       # Cross-browser adapters (Chrome/Firefox/Safari/Edge)
+├── background/     # Service-worker / background scripts
+├── browser/        # Browser API polyfill wrappers
+├── components/     # Reusable UI components
+├── content/        # Content scripts
+├── context-menu/   # Context menu integration (issue #45)
+├── contexts/       # React contexts (routing, session, theme, etc.)
+├── crypto/         # Encryption utilities
+├── database/       # Data-layer abstractions (currently NeoDB-oriented)
+├── hooks/          # React hooks
+├── icons/          # Extension icons
+├── manifest/       # Per-browser manifest generators
+├── options/        # Options / settings page
+├── performance/    # Performance instrumentation
+├── popup/          # Browser action popup
+├── router/         # Client-side routing
+├── security/       # Security utilities (CSP, permissions, etc.)
+├── session/        # Session detection and lifecycle (issue #42)
+├── shared/         # Cross-cutting utilities
+├── storage/        # Storage abstractions (IndexedDB, chrome.storage)
+├── testing/        # Test helpers / harness
+├── tracking/       # Tab tracking (issue #42)
+├── ui/             # UI feature modules (timeline, sidebar, etc.)
+├── utils/          # Generic utilities
+└── __tests__/      # Unit tests co-located under src/
+```
+
+### Root-Level Extension Files
+```
+tabkiller/
+├── manifest.json          # Base manifest (per-browser variants generated at build)
+├── webpack.config.js      # Multi-browser build (TARGET_BROWSER env)
+├── tsconfig.json          # TypeScript config
+├── jest.config.js         # Jest config
+├── test-performance.js    # Performance benchmark harness
+├── scripts/               # build.sh, dev.sh helpers
+└── tests/                 # Top-level test suites
 ```
 
 ### Testing Structure

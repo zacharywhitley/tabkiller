@@ -1,7 +1,7 @@
 ---
 created: 2025-09-05T01:40:49Z
-last_updated: 2025-09-05T01:40:49Z
-version: 1.0
+last_updated: 2026-07-09T21:59:33Z
+version: 2.0
 author: Claude Code PM System
 ---
 
@@ -11,19 +11,26 @@ author: Claude Code PM System
 
 **TabKiller** is a universal browser extension that revolutionizes how users interact with their browsing history by providing intelligent organization, powerful search capabilities, and complete privacy control. The extension transforms the traditional concept of bookmarks into a dynamic, relationship-aware system that understands user context and intent.
 
-## Current State
+## Current State (2026-07-09)
 
 ### Development Phase
-- **Status:** Initial setup and planning phase
-- **Repository:** Fresh repository with Claude Code PM system installed
+- **Status:** Foundational extension and UI shipped; backend/sync layer decision pending
+- **Repository:** Active, 20 commits ahead of `origin/epic/tabkiller`; recently resumed after a Sep 2025 → Jul 2026 dormancy
 - **Team:** Solo developer with AI-assisted development workflow
-- **Timeline:** 6-8 month development cycle to MVP
 
-### Infrastructure Setup
-- **Development Workflow:** Claude Code PM system with spec-driven development
-- **Version Control:** Git with GitHub integration for issue tracking
-- **Architecture Planning:** Context-driven development with specialized agents
-- **Documentation:** Comprehensive project context established
+### Delivered
+- **Extension foundation:** Manifest V3, multi-browser webpack targets (Chrome/Firefox/Safari/Edge), TypeScript, React 19 UI
+- **Extension packaging epic (#28–#35):** production build, onboarding, store submission materials, CI/CD, update management, launch prep
+- **User-interface epic (#40–#45):** React architecture, session UI, git-style timeline with virtual scrolling and search, sidebar, context-menu integration with i18n and keyboard shortcuts
+- **Tab tracking & session detection** in `src/tracking/` and `src/session/`
+- **Storage abstraction** in `src/storage/` (IndexedDB + chrome.storage)
+
+### Not Yet Started
+- Backend graph database (NeoDB vs. GunDB decision open)
+- SSB (or GunDB) synchronization protocol
+- SingleFile page archiving
+- LLM query integration
+- End-to-end encryption of persisted data
 
 ## Feature Roadmap
 

@@ -133,17 +133,24 @@ const config = {
   
   optimization: {
     minimize: isProduction,
+    // Service workers in MV3 cannot dynamically importScripts() extra chunk
+    // files at runtime the way pages can via <script> injection. Applying
+    // splitChunks to the service worker entry produces a bundle that
+    // references sibling files (vendors.js, shared.js, N.js) that Chrome
+    // silently fails to load, so the SW never starts and its console stays
+    // empty. Exclude the SW entry from splitting; page entries keep the
+    // benefit.
     splitChunks: {
-      chunks: 'all',
+      chunks(chunk) {
+        return chunk.name !== 'background/service-worker';
+      },
       cacheGroups: {
         vendor: {
           test: /[\\/]node_modules[\\/]/,
-          name: 'vendors',
-          chunks: 'all'
+          name: 'vendors'
         },
         shared: {
           name: 'shared',
-          chunks: 'all',
           minChunks: 2
         }
       }

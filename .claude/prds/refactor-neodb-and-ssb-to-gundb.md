@@ -1,9 +1,20 @@
 ---
 name: refactor-neodb-and-ssb-to-gundb
 description: Simplify TabKiller's data architecture by replacing NeoDB/SSB with unified GunDB system, with future extensibility for advanced features
-status: backlog
+status: deprecated
 created: 2025-09-06T15:25:08Z
+deprecated: 2026-07-10T00:22:14Z
+superseded_by: temporal-browsing-graph
 ---
+
+> **DEPRECATED 2026-07-10.** Superseded by `temporal-browsing-graph.md`.
+> After review, both the original NeoDB+SSB architecture and the GunDB
+> alternative proposed here were rejected. The exotic-distributed direction
+> was determined to be an unnecessary source of project risk for a personal
+> browser-sync problem that is well served by a local-first store plus
+> conventional hosted sync (later PRD). More importantly, the real
+> differentiator is the graph *data model*, not the storage substrate.
+> The new PRD focuses on that. This document is retained for history.
 
 # PRD: Refactor NeoDB and SSB to GunDB
 

@@ -10,15 +10,17 @@ import { BrowsingSession, TabInfo, NavigationEvent, SessionBoundary } from '../.
 // =============================================================================
 
 export const DATABASE_NAME = 'TabKillerSessions';
-export const DATABASE_VERSION = 1;
+export const DATABASE_VERSION = 2;
 
 // Object store names
 export const STORE_NAMES = {
   SESSIONS: 'sessions',
-  TABS: 'tabs', 
+  TABS: 'tabs',
   NAVIGATION_EVENTS: 'navigation_events',
   SESSION_BOUNDARIES: 'session_boundaries',
-  METADATA: 'metadata'
+  METADATA: 'metadata',
+  GRAPH_NODES: 'graph_nodes',
+  GRAPH_EDGES: 'graph_edges'
 } as const;
 
 // Index names for efficient querying
@@ -28,25 +30,50 @@ export const INDEX_NAMES = {
   SESSION_BY_CREATED_AT: 'by_created_at',
   SESSION_BY_UPDATED_AT: 'by_updated_at',
   SESSION_BY_DOMAIN: 'by_domain',
-  
+
   // Tab indexes
   TAB_BY_SESSION_ID: 'by_session_id',
   TAB_BY_WINDOW_ID: 'by_window_id',
   TAB_BY_URL: 'by_url',
   TAB_BY_DOMAIN: 'by_domain',
   TAB_BY_CREATED_AT: 'by_created_at',
-  
+
   // Navigation event indexes
   NAV_BY_TAB_ID: 'by_tab_id',
   NAV_BY_SESSION_ID: 'by_session_id',
   NAV_BY_TIMESTAMP: 'by_timestamp',
   NAV_BY_URL: 'by_url',
   NAV_BY_DOMAIN: 'by_domain',
-  
+
   // Boundary indexes
   BOUNDARY_BY_SESSION_ID: 'by_session_id',
   BOUNDARY_BY_TIMESTAMP: 'by_timestamp',
-  BOUNDARY_BY_REASON: 'by_reason'
+  BOUNDARY_BY_REASON: 'by_reason',
+
+  // Graph node indexes
+  //
+  // The temporal graph model (see PRD temporal-browsing-graph) requires
+  // efficient lookup by (type, at_time) for nodes carrying an at_time
+  // field, plus node-type-specific single-field indexes for identity
+  // lookups. Non-matching records (missing the keyPath) are simply
+  // skipped by IndexedDB.
+  GRAPH_NODE_BY_TYPE_AT_TIME: 'by_type_at_time',
+  GRAPH_NODE_BY_PAGE_NORMALIZED_URL: 'by_page_normalized_url',
+  GRAPH_NODE_BY_DOMAIN_HOSTNAME: 'by_domain_hostname',
+  GRAPH_NODE_BY_TAG_SLUG: 'by_tag_slug',
+  GRAPH_NODE_BY_TAB_BROWSER_TAB_ID: 'by_tab_browser_tab_id',
+
+  // Graph edge indexes
+  //
+  // (from_id, type) and (to_id, type) power the out/in adjacency queries.
+  // Point and interval edges live in the same store and use different
+  // temporal keys — indexing on a combined virtual field would require
+  // stored duplication, so we split into two temporal indexes; queries
+  // by edge type pick the appropriate one based on the type's kind.
+  GRAPH_EDGE_BY_FROM_TYPE: 'by_from_type',
+  GRAPH_EDGE_BY_TO_TYPE: 'by_to_type',
+  GRAPH_EDGE_BY_TYPE_AT_TIME: 'by_type_at_time',
+  GRAPH_EDGE_BY_TYPE_VALID_FROM: 'by_type_valid_from'
 } as const;
 
 // =============================================================================
@@ -274,6 +301,65 @@ export interface DatabaseSchema {
     autoIncrement: false;
     indexes: {};
   };
+
+  [STORE_NAMES.GRAPH_NODES]: {
+    keyPath: 'id';
+    autoIncrement: false;
+    indexes: {
+      [INDEX_NAMES.GRAPH_NODE_BY_TYPE_AT_TIME]: {
+        keyPath: ['type', 'at_time'];
+        unique: false;
+        multiEntry: false;
+      };
+      [INDEX_NAMES.GRAPH_NODE_BY_PAGE_NORMALIZED_URL]: {
+        keyPath: 'normalized_url';
+        unique: false;
+        multiEntry: false;
+      };
+      [INDEX_NAMES.GRAPH_NODE_BY_DOMAIN_HOSTNAME]: {
+        keyPath: 'hostname';
+        unique: false;
+        multiEntry: false;
+      };
+      [INDEX_NAMES.GRAPH_NODE_BY_TAG_SLUG]: {
+        keyPath: 'slug';
+        unique: false;
+        multiEntry: false;
+      };
+      [INDEX_NAMES.GRAPH_NODE_BY_TAB_BROWSER_TAB_ID]: {
+        keyPath: 'browser_tab_id';
+        unique: false;
+        multiEntry: false;
+      };
+    };
+  };
+
+  [STORE_NAMES.GRAPH_EDGES]: {
+    keyPath: 'id';
+    autoIncrement: false;
+    indexes: {
+      [INDEX_NAMES.GRAPH_EDGE_BY_FROM_TYPE]: {
+        keyPath: ['from_id', 'type'];
+        unique: false;
+        multiEntry: false;
+      };
+      [INDEX_NAMES.GRAPH_EDGE_BY_TO_TYPE]: {
+        keyPath: ['to_id', 'type'];
+        unique: false;
+        multiEntry: false;
+      };
+      [INDEX_NAMES.GRAPH_EDGE_BY_TYPE_AT_TIME]: {
+        keyPath: ['type', 'at_time'];
+        unique: false;
+        multiEntry: false;
+      };
+      [INDEX_NAMES.GRAPH_EDGE_BY_TYPE_VALID_FROM]: {
+        keyPath: ['type', 'valid_from'];
+        unique: false;
+        multiEntry: false;
+      };
+    };
+  };
 }
 
 // =============================================================================
@@ -426,6 +512,65 @@ export function getSchemaDefinition(): DatabaseSchema {
       keyPath: 'version',
       autoIncrement: false,
       indexes: {}
+    },
+
+    [STORE_NAMES.GRAPH_NODES]: {
+      keyPath: 'id',
+      autoIncrement: false,
+      indexes: {
+        [INDEX_NAMES.GRAPH_NODE_BY_TYPE_AT_TIME]: {
+          keyPath: ['type', 'at_time'],
+          unique: false,
+          multiEntry: false
+        },
+        [INDEX_NAMES.GRAPH_NODE_BY_PAGE_NORMALIZED_URL]: {
+          keyPath: 'normalized_url',
+          unique: false,
+          multiEntry: false
+        },
+        [INDEX_NAMES.GRAPH_NODE_BY_DOMAIN_HOSTNAME]: {
+          keyPath: 'hostname',
+          unique: false,
+          multiEntry: false
+        },
+        [INDEX_NAMES.GRAPH_NODE_BY_TAG_SLUG]: {
+          keyPath: 'slug',
+          unique: false,
+          multiEntry: false
+        },
+        [INDEX_NAMES.GRAPH_NODE_BY_TAB_BROWSER_TAB_ID]: {
+          keyPath: 'browser_tab_id',
+          unique: false,
+          multiEntry: false
+        }
+      }
+    },
+
+    [STORE_NAMES.GRAPH_EDGES]: {
+      keyPath: 'id',
+      autoIncrement: false,
+      indexes: {
+        [INDEX_NAMES.GRAPH_EDGE_BY_FROM_TYPE]: {
+          keyPath: ['from_id', 'type'],
+          unique: false,
+          multiEntry: false
+        },
+        [INDEX_NAMES.GRAPH_EDGE_BY_TO_TYPE]: {
+          keyPath: ['to_id', 'type'],
+          unique: false,
+          multiEntry: false
+        },
+        [INDEX_NAMES.GRAPH_EDGE_BY_TYPE_AT_TIME]: {
+          keyPath: ['type', 'at_time'],
+          unique: false,
+          multiEntry: false
+        },
+        [INDEX_NAMES.GRAPH_EDGE_BY_TYPE_VALID_FROM]: {
+          keyPath: ['type', 'valid_from'],
+          unique: false,
+          multiEntry: false
+        }
+      }
     }
   };
 }
@@ -470,8 +615,12 @@ export function generateMigrationInstructions(fromVersion: number, toVersion: nu
     instructions.push('Create initial schema with sessions, tabs, navigation_events, session_boundaries, and metadata stores');
     instructions.push('Add all required indexes for efficient querying');
   }
-  
-  // Future migration instructions would be added here
-  
+
+  if (fromVersion < 2 && toVersion >= 2) {
+    instructions.push('Add graph_nodes and graph_edges object stores for the temporal browsing graph');
+    instructions.push('Create graph node indexes: (type, at_time), plus type-specific single-field indexes');
+    instructions.push('Create graph edge indexes: (from_id, type), (to_id, type), (type, at_time), (type, valid_from)');
+  }
+
   return instructions;
 }

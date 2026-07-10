@@ -907,6 +907,18 @@ export class SessionStorageEngine {
     }
   }
 
+  /**
+   * Underlying IndexedDB handle. Exposed so components sharing the
+   * database (e.g. the temporal graph store) can drive their own
+   * transactions without opening a second connection.
+   */
+  getDatabase(): IDBDatabase {
+    if (!this.db) {
+      throw new Error('SessionStorageEngine.getDatabase() called before initialize()');
+    }
+    return this.db;
+  }
+
   // =============================================================================
   // PUBLIC API
   // =============================================================================

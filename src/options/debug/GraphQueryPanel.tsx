@@ -13,12 +13,15 @@ import { openGraphStoreForDebug } from './index';
 import {
   causalPredecessors,
   pagesOpenedFromDomain,
+  tabTreeForSession,
   tabTreeForTag,
   visitFocusedAt,
   visitsInTagPredatingTag,
   visitsOnScreenBetween,
 } from '../../database/graph/queries';
 import type { GraphStore } from '../../database/graph/store';
+import type { TabTreeSession } from '../../database/graph/queries';
+import { SessionTabTreeView } from './SessionTabTreeView';
 
 type QueryName =
   | 'pagesOpenedFromDomain'
@@ -26,7 +29,14 @@ type QueryName =
   | 'visitsInTagPredatingTag'
   | 'causalPredecessors'
   | 'visitsOnScreenBetween'
-  | 'tabTreeForTag';
+  | 'tabTreeForTag'
+  | 'tabTreeForSession';
+
+// Queries whose result is `TabTreeSession[]` — the only ones the
+// Tab-Tree view knows how to render.
+const TAB_TREE_QUERIES = new Set<QueryName>(['tabTreeForTag', 'tabTreeForSession']);
+
+type ViewMode = 'json' | 'tab-tree';
 
 interface QueryDescriptor {
   name: QueryName;
@@ -103,6 +113,12 @@ const QUERIES: ReadonlyArray<QueryDescriptor> = [
     fields: [{ key: 'tagSlug', label: 'tagSlug', placeholder: 'react-research' }],
     run: (g, p) => tabTreeForTag(g, requireString(p, 'tagSlug')),
   },
+  {
+    name: 'tabTreeForSession',
+    label: 'tabTreeForSession(sessionId)',
+    fields: [{ key: 'sessionId', label: 'sessionId', placeholder: 's_abc123' }],
+    run: (g, p) => tabTreeForSession(g, requireString(p, 'sessionId')),
+  },
 ];
 
 const PANEL_STYLE: React.CSSProperties = {
@@ -134,19 +150,22 @@ const FIELD_ROW_STYLE: React.CSSProperties = {
 export const GraphQueryPanel: React.FC = () => {
   const [selected, setSelected] = useState<QueryName>(QUERIES[0]!.name);
   const [params, setParams] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<string>('');
+  const [rawResult, setRawResult] = useState<unknown>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('json');
 
   const descriptor = useMemo(
     () => QUERIES.find((q) => q.name === selected) ?? QUERIES[0]!,
     [selected],
   );
 
+  const isTabTreeQuery = TAB_TREE_QUERIES.has(descriptor.name);
+
   const onSelect = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     setSelected(event.target.value as QueryName);
     setParams({});
-    setResult('');
+    setRawResult(undefined);
     setError(null);
   }, []);
 
@@ -160,17 +179,20 @@ export const GraphQueryPanel: React.FC = () => {
   const onRun = useCallback(async () => {
     setRunning(true);
     setError(null);
-    setResult('');
+    setRawResult(undefined);
     try {
       const store = await openGraphStoreForDebug();
       const value = await descriptor.run(store, params);
-      setResult(JSON.stringify(value, null, 2));
+      setRawResult(value);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setRunning(false);
     }
   }, [descriptor, params]);
+
+  const hasResult = rawResult !== undefined;
+  const showTabTreeView = isTabTreeQuery && viewMode === 'tab-tree' && hasResult;
 
   return (
     <section style={PANEL_STYLE} data-testid="tk-graph-query-panel">
@@ -210,6 +232,21 @@ export const GraphQueryPanel: React.FC = () => {
         </div>
       ))}
 
+      {isTabTreeQuery && (
+        <div style={FIELD_ROW_STYLE}>
+          <label htmlFor="tk-graph-query-view-mode">View</label>
+          <select
+            id="tk-graph-query-view-mode"
+            value={viewMode}
+            onChange={(e) => setViewMode(e.target.value as ViewMode)}
+            disabled={running}
+          >
+            <option value="json">JSON</option>
+            <option value="tab-tree">Tab tree</option>
+          </select>
+        </div>
+      )}
+
       <div style={{ marginTop: 8 }}>
         <button type="button" onClick={onRun} disabled={running}>
           {running ? 'Running...' : 'Run'}
@@ -222,10 +259,16 @@ export const GraphQueryPanel: React.FC = () => {
         </div>
       )}
 
-      {result !== '' && (
+      {hasResult && !showTabTreeView && (
         <pre style={{ ...RESULT_STYLE, marginTop: 8 }} data-testid="tk-graph-query-result">
-          {result}
+          {JSON.stringify(rawResult, null, 2)}
         </pre>
+      )}
+
+      {showTabTreeView && (
+        <div style={{ marginTop: 8 }} data-testid="tk-graph-query-tab-tree">
+          <SessionTabTreeView data={(rawResult as TabTreeSession[]) ?? []} />
+        </div>
       )}
     </section>
   );

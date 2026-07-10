@@ -17,6 +17,7 @@ const config = {
     'content/content-script': './src/content/content-script.ts',
     'popup/popup': './src/ui/popup/index.tsx',
     'options/options': './src/ui/options/index.tsx',
+    'options/debug': './src/options/debug/standalone.tsx',
     'history/history': './src/ui/history/index.tsx'
   },
   
@@ -112,6 +113,12 @@ const config = {
       template: 'src/options/options.html',
       filename: 'options/options.html',
       chunks: ['options/options']
+    }),
+
+    new HtmlWebpackPlugin({
+      template: 'src/options/debug/standalone.html',
+      filename: 'options/debug.html',
+      chunks: ['options/debug']
     }),
     
     new HtmlWebpackPlugin({

@@ -240,3 +240,17 @@ parallelizable with T1. T6 must come last.
 Solo developer, no external dependencies. No infrastructure. No new
 tooling. A day of the developer's own live browsing is required as the
 integration test data.
+
+## Tasks Created
+
+- [ ] 001.md - IndexedDB GraphStore (parallel: true)
+- [ ] 002.md - URL normalization (parallel: true)
+- [ ] 003.md - Capture layer consolidation (parallel: true)
+- [ ] 004.md - Ingest pipeline (parallel: false, depends on 001+002+003)
+- [ ] 005.md - Query API + real-day integration (parallel: false, depends on 004)
+- [ ] 006.md - Cutover + delete pass (parallel: false, depends on 005)
+
+Total tasks: 6
+Parallel tasks: 3 (001, 002, 003 — can all start immediately)
+Sequential tasks: 3 (004 → 005 → 006 form the critical path)
+Estimated total effort: ~88 hours (~11 solo working days)

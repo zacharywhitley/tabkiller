@@ -257,11 +257,9 @@ afterEach(() => {
   }
 };
 
-// Setup jsdom environment
-// jsdom 26 makes both `delete window.location` and defineProperty on the
-// location slot throw. jsdom does allow navigation by assigning to
-// window.location.href, which updates every derived field.
-window.location.href = 'https://example.com/';
+// jsdom URL is set via jest.config.js `testEnvironmentOptions.url`.
+// Do not assign to window.location here — jsdom 26 makes the slot
+// non-configurable, and assigning to `.href` triggers real navigation.
 
 // Mock IntersectionObserver
 global.IntersectionObserver = jest.fn().mockImplementation(() => ({

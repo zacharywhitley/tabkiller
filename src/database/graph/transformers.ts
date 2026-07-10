@@ -170,7 +170,27 @@ function hostnameOf(rawUrl: string): string | null {
   }
 }
 
-function mapTransition(t: string | undefined): VisitNode['transition'] {
+/**
+ * Map a raw `webNavigation.TransitionType` value to the graph schema's
+ * VisitNode.transition enum.
+ *
+ * Chrome and Firefox both emit the WHATWG-agreed core set — `link`,
+ * `typed`, `auto_bookmark`, `manual_subframe`, `generated`, `start_page`,
+ * `form_submit`, `reload`, `keyword`, `keyword_generated` — plus a few
+ * extras. Our schema does not distinguish `keyword` from typed URL-bar
+ * navigation (both feel like typed to the user), and `start_page` is
+ * modeled as a browser default so it is neither a link nor typed — we
+ * mark it `unknown`.
+ *
+ * Anything else (including a missing value) surfaces as `unknown` and
+ * emits a `warn` on the ingest context so a future extension of the
+ * schema is prompted rather than silently swallowed.
+ */
+function mapTransition(
+  t: string | undefined,
+  ctx: IngestContext,
+  eventId: string,
+): VisitNode['transition'] {
   switch (t) {
     case 'link':
     case 'typed':
@@ -183,7 +203,32 @@ function mapTransition(t: string | undefined): VisitNode['transition'] {
       return 'auto_bookmark';
     case 'back_forward':
       return 'back_forward';
+    case 'keyword':
+    case 'keyword_generated':
+      // URL-bar keyword expansion — user typed a keyword that expanded
+      // to a URL. Semantically closer to `typed` than to `link`.
+      return 'typed';
+    case 'manual_subframe':
+    case 'auto_subframe':
+      // Sub-frame navigations should not reach this transformer — the
+      // service worker filters frameId !== 0. If it slips through, mark
+      // it unknown rather than pretend it was a real user navigation.
+      return 'unknown';
+    case 'start_page':
+      // Browser-default landing page (chrome://newtab, home page, etc).
+      // Not a real navigation the user picked.
+      return 'unknown';
+    case undefined:
+    case null:
+    case '':
+      return 'unknown';
     default:
+      // Unknown value — do NOT silently default to `typed`. Log so we
+      // notice a new Chrome/Firefox transition type and extend the map.
+      ctx.warn('navigation_committed unknown transitionType', {
+        eventId,
+        transitionType: t,
+      });
       return 'unknown';
   }
 }
@@ -340,16 +385,39 @@ export async function transformTabCreated(
 // ---- tab_updated ----
 
 /**
- * Emit nothing. URL changes flow through `webNavigation.onCommitted`, which
- * becomes a new Visit; title changes are surfaced on next navigation via
- * the Page node's `title` field. Returning an empty batch still marks the
- * event drained so the outbox does not grow unbounded.
+ * Surface a late-arriving title on the Page node.
+ *
+ * SPAs commonly commit navigation with an empty or stale `<title>` and set
+ * the real title asynchronously — `webNavigation.onCommitted` fires before
+ * the DOM has resolved. The service worker forwards `tabs.onUpdated` events
+ * whose `changeInfo.title` is set so this transformer can rewrite the
+ * Page's `title` in place.
+ *
+ * URL and title changes that are NOT title-only still flow through
+ * `navigation_committed` — this transformer only handles the title path.
  */
 export async function transformTabUpdated(
-  _event: BrowsingEvent,
-  _ctx: IngestContext,
+  event: BrowsingEvent,
+  ctx: IngestContext,
 ): Promise<GraphWriteBatch> {
-  return {};
+  const title = event.title;
+  const rawUrl = event.url;
+  if (!title || !rawUrl) return {};
+
+  const normalizedUrl = normalizeUrl(rawUrl);
+  const existingPage = await ctx.findPage(normalizedUrl);
+  if (!existingPage) return {};
+  if (existingPage.title === title) return {};
+
+  return {
+    nodes: [
+      {
+        ...existingPage,
+        recorded_at: ctx.now(),
+        title,
+      },
+    ],
+  };
 }
 
 // ---- tab_removed ----
@@ -572,7 +640,11 @@ export async function transformNavigationCommitted(
     at_time: event.timestamp,
     ended_at: null,
     focus_intervals: [],
-    transition: mapTransition(event.metadata?.transitionType as string | undefined),
+    transition: mapTransition(
+      event.metadata?.transitionType as string | undefined,
+      ctx,
+      event.id,
+    ),
   });
 
   // of_page: Visit -> Page, held for visit duration.

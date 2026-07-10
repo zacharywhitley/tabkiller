@@ -269,14 +269,140 @@ describe('transformTabCreated', () => {
 // ============================================================================
 
 describe('transformTabUpdated', () => {
-  it('emits nothing (URL and title changes are handled via navigation_committed)', async () => {
+  it('emits nothing when the event carries no title (URL-only updates are handled via navigation_committed)', async () => {
     const store = emptyStore();
     const ctx = makeContext(store, emptyState());
     const batch = await transformTabUpdated(
-      makeEvent({ id: 'e', type: 'tab_updated', timestamp: NAV_TIME, tabId: 1 }),
+      makeEvent({
+        id: 'e',
+        type: 'tab_updated',
+        timestamp: NAV_TIME,
+        tabId: 1,
+        url: 'https://example.com/',
+      }),
       ctx,
     );
     expect(batch).toEqual({});
+  });
+
+  it('emits nothing when the referenced Page is not in the graph yet', async () => {
+    const store = emptyStore();
+    const ctx = makeContext(store, emptyState());
+    const batch = await transformTabUpdated(
+      makeEvent({
+        id: 'e',
+        type: 'tab_updated',
+        timestamp: NAV_TIME,
+        tabId: 1,
+        url: 'https://example.com/nothing-here',
+        title: 'A Late Title',
+      }),
+      ctx,
+    );
+    expect(batch).toEqual({});
+  });
+
+  it('rewrites the Page title when a late-arriving title lands and the Page exists', async () => {
+    const store = emptyStore();
+    const existingPage: PageNode = {
+      id: pageNodeId('https://example.com/'),
+      type: 'Page',
+      recorded_at: 1,
+      normalized_url: 'https://example.com/',
+      raw_url_first_seen: 'https://example.com/',
+      title: '',
+      first_seen: NAV_TIME,
+      last_seen: NAV_TIME,
+      visit_count: 1,
+    };
+    store.pages.set('https://example.com/', existingPage);
+
+    const ctx = makeContext(store, emptyState());
+    const batch = await transformTabUpdated(
+      makeEvent({
+        id: 'e',
+        type: 'tab_updated',
+        timestamp: NAV_TIME + 500,
+        tabId: 1,
+        url: 'https://example.com/',
+        title: 'Real Title',
+      }),
+      ctx,
+    );
+
+    expect(batch.nodes).toHaveLength(1);
+    const rewritten = (batch.nodes ?? [])[0] as PageNode;
+    expect(rewritten.type).toBe('Page');
+    expect(rewritten.title).toBe('Real Title');
+    // Identity fields stay stable — this is a title patch, not a new visit.
+    expect(rewritten.normalized_url).toBe('https://example.com/');
+    expect(rewritten.visit_count).toBe(1);
+    expect(rewritten.first_seen).toBe(NAV_TIME);
+    expect(rewritten.recorded_at).toBe(NOW);
+    // No edges — the Page is only being title-patched.
+    expect(batch.edges ?? []).toHaveLength(0);
+  });
+
+  it('is a no-op when the incoming title matches the Page\'s current title', async () => {
+    const store = emptyStore();
+    const existingPage: PageNode = {
+      id: pageNodeId('https://example.com/'),
+      type: 'Page',
+      recorded_at: 1,
+      normalized_url: 'https://example.com/',
+      raw_url_first_seen: 'https://example.com/',
+      title: 'Already Right',
+      first_seen: NAV_TIME,
+      last_seen: NAV_TIME,
+      visit_count: 1,
+    };
+    store.pages.set('https://example.com/', existingPage);
+
+    const ctx = makeContext(store, emptyState());
+    const batch = await transformTabUpdated(
+      makeEvent({
+        id: 'e',
+        type: 'tab_updated',
+        timestamp: NAV_TIME + 500,
+        tabId: 1,
+        url: 'https://example.com/',
+        title: 'Already Right',
+      }),
+      ctx,
+    );
+    expect(batch).toEqual({});
+  });
+
+  it('normalizes tracking params before locating the Page to patch', async () => {
+    const store = emptyStore();
+    const existingPage: PageNode = {
+      id: pageNodeId('https://example.com/article'),
+      type: 'Page',
+      recorded_at: 1,
+      normalized_url: 'https://example.com/article',
+      raw_url_first_seen: 'https://example.com/article',
+      title: '',
+      first_seen: NAV_TIME,
+      last_seen: NAV_TIME,
+      visit_count: 1,
+    };
+    store.pages.set('https://example.com/article', existingPage);
+
+    const ctx = makeContext(store, emptyState());
+    const batch = await transformTabUpdated(
+      makeEvent({
+        id: 'e',
+        type: 'tab_updated',
+        timestamp: NAV_TIME + 500,
+        tabId: 1,
+        url: 'https://example.com/article?utm_source=x&fbclid=y',
+        title: 'Article Loaded',
+      }),
+      ctx,
+    );
+
+    expect(batch.nodes).toHaveLength(1);
+    expect((batch.nodes as PageNode[])[0].title).toBe('Article Loaded');
   });
 });
 
@@ -422,6 +548,10 @@ describe('transformNavigationCommitted', () => {
     const page = (batch.nodes ?? []).find((n): n is PageNode => n.type === 'Page');
     expect(page!.normalized_url).toBe('https://example.com/article');
     expect(page!.raw_url_first_seen).toBe('https://example.com/article');
+    // The title from webNavigation flows through to the Page node —
+    // this is Gap 1 in the capture-completeness followup: without the
+    // service worker reading `chrome.tabs.get(tabId).title` at commit
+    // time, this field was always empty.
     expect(page!.title).toBe('Article');
     expect(page!.visit_count).toBe(1);
 
@@ -676,6 +806,102 @@ describe('transformNavigationCommitted', () => {
     expect(arrivedVia).toBeDefined();
     expect(arrivedVia!.from_id).toBe(visitNodeId('nav_click'));
     expect(arrivedVia!.to_id).toBe(searchNode!.id);
+  });
+
+  it.each([
+    ['link', 'link'],
+    ['typed', 'typed'],
+    ['form_submit', 'form_submit'],
+    ['auto_bookmark', 'auto_bookmark'],
+    ['reload', 'reload'],
+    ['generated', 'generated'],
+    ['bookmark', 'auto_bookmark'],
+    ['back_forward', 'back_forward'],
+    // Chrome-specific keyword variants collapse to `typed` — user typed
+    // a keyword that expanded to a URL.
+    ['keyword', 'typed'],
+    ['keyword_generated', 'typed'],
+    // Sub-frame transitions should be filtered at the SW, but if they
+    // slip through we mark them unknown rather than pretend they were
+    // real user navigations.
+    ['manual_subframe', 'unknown'],
+    ['auto_subframe', 'unknown'],
+    // Browser-default landing page (chrome://newtab, home page).
+    ['start_page', 'unknown'],
+  ])('maps webNavigation transitionType %s → %s', async (rawTransition, expected) => {
+    const store = emptyStore();
+    const state = emptyState();
+    store.tabs.set(42, {
+      id: tabNodeId('tabc_1'), type: 'Tab', recorded_at: 1,
+      opened_at: 1, closed_at: null, browser_tab_id: 42,
+    });
+
+    const batch = await transformNavigationCommitted(
+      makeEvent({
+        id: `nav_${rawTransition}`,
+        type: 'navigation_committed',
+        timestamp: NAV_TIME,
+        tabId: 42,
+        url: 'https://example.com/',
+        metadata: { transitionType: rawTransition },
+      }),
+      makeContext(store, state),
+    );
+
+    const visit = (batch.nodes ?? []).find((n): n is VisitNode => n.type === 'Visit');
+    expect(visit).toBeDefined();
+    expect(visit!.transition).toBe(expected);
+  });
+
+  it('marks an unrecognized transitionType as `unknown` and logs a warning so we notice a new value', async () => {
+    const store = emptyStore();
+    const state = emptyState();
+    store.tabs.set(42, {
+      id: tabNodeId('tabc_1'), type: 'Tab', recorded_at: 1,
+      opened_at: 1, closed_at: null, browser_tab_id: 42,
+    });
+
+    const batch = await transformNavigationCommitted(
+      makeEvent({
+        id: 'nav_alien',
+        type: 'navigation_committed',
+        timestamp: NAV_TIME,
+        tabId: 42,
+        url: 'https://example.com/',
+        // Fictional transition type Chrome might add tomorrow.
+        metadata: { transitionType: 'nfc_beacon_from_watch' },
+      }),
+      makeContext(store, state),
+    );
+
+    const visit = (batch.nodes ?? []).find((n): n is VisitNode => n.type === 'Visit');
+    expect(visit!.transition).toBe('unknown');
+    expect(store.warnings.some((w) => w.message.includes('unknown transitionType'))).toBe(true);
+  });
+
+  it('marks a missing transitionType as `unknown` without warning (missing is normal)', async () => {
+    const store = emptyStore();
+    const state = emptyState();
+    store.tabs.set(42, {
+      id: tabNodeId('tabc_1'), type: 'Tab', recorded_at: 1,
+      opened_at: 1, closed_at: null, browser_tab_id: 42,
+    });
+
+    const batch = await transformNavigationCommitted(
+      makeEvent({
+        id: 'nav_none',
+        type: 'navigation_committed',
+        timestamp: NAV_TIME,
+        tabId: 42,
+        url: 'https://example.com/',
+        metadata: {},
+      }),
+      makeContext(store, state),
+    );
+
+    const visit = (batch.nodes ?? []).find((n): n is VisitNode => n.type === 'Visit');
+    expect(visit!.transition).toBe('unknown');
+    expect(store.warnings.filter((w) => w.message.includes('unknown transitionType'))).toHaveLength(0);
   });
 
   it('normalizes tracking params before computing Page identity', async () => {

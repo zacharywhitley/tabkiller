@@ -39,4 +39,4 @@ None.
 - **`SessionStorageEngine.setupSchema` already tolerated schema growth** — it iterates over `Object.values(STORE_NAMES)` and creates any missing store. Bumping `DATABASE_VERSION` to 2 is enough to trigger `onupgradeneeded`, which then discovers and creates `graph_nodes` and `graph_edges`. No changes needed to the upgrade handler itself.
 
 ## Commit hashes
-Filled in after commit.
+- `6ad1970` feat(graph): implement IndexedDB-backed GraphStore

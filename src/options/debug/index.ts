@@ -49,9 +49,24 @@ export function isDebugPanelEnabled(): boolean {
  * the SW's later open sees a matching version and never runs
  * onupgradeneeded. Open without a version reads whatever's there.
  */
-export function openGraphStoreForDebug(): Promise<GraphStore> {
+export async function openGraphStoreForDebug(): Promise<GraphStore> {
+  // Check existence BEFORE opening. `indexedDB.open(name)` creates the
+  // database at version 1 if it does not exist, which would race the
+  // service worker's own open (at DATABASE_VERSION) and leave the DB in
+  // a permanently broken state (v1 shell, no stores). If the DB isn't
+  // there, we fail fast with a message the developer can act on.
+  const existing = await indexedDB.databases();
+  const info = existing.find((d) => d.name === DATABASE_NAME);
+  if (!info) {
+    throw new Error(
+      `Database "${DATABASE_NAME}" does not exist yet. Wake the service worker ` +
+        `(chrome://extensions → click "Service worker") and navigate to any real page ` +
+        `so it can create the schema, then reload this page.`,
+    );
+  }
+
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME);
+    const request = indexedDB.open(DATABASE_NAME, info.version);
     request.onerror = () => {
       reject(new Error(`Failed to open ${DATABASE_NAME}: ${request.error?.message ?? 'unknown error'}`));
     };
@@ -69,10 +84,11 @@ export function openGraphStoreForDebug(): Promise<GraphStore> {
         db.close();
         reject(
           new Error(
-            `Graph object stores not found (DB at version ${version}, stores: [${stores.join(', ')}]). ` +
-              `Force-wake the service worker (chrome://extensions → click "Service worker") ` +
-              `then navigate to a page so onupgradeneeded runs. If the DB is stuck at a version >= ${DATABASE_VERSION} ` +
-              `without graph_nodes, delete "${DATABASE_NAME}" in DevTools → Application → IndexedDB and reload the extension.`,
+            `Graph object stores not found (DB at version ${version}, stores: [${stores.join(', ') || '(none)'}]). ` +
+              `The service worker has not successfully run SessionStorageEngine.initialize() yet — ` +
+              `check chrome://extensions → "Service worker" console for startup errors. ` +
+              `If the DB is stuck without graph_nodes/graph_edges, delete "${DATABASE_NAME}" in ` +
+              `DevTools → Application → IndexedDB and reload the extension, then wake the SW again.`,
           ),
         );
         return;

@@ -3,18 +3,13 @@
  * Handles tab tracking, session management, and cross-browser compatibility
  */
 
-// PROBE: fires the moment Chrome starts executing this bundle. If nothing
-// below runs, at least this line will surface where startup dies.
-// eslint-disable-next-line no-console
-console.log('[TK-SW] bundle top:', new Date().toISOString());
-
+// Surface any error that escapes handlers below so it isn't lost in the
+// service worker's short lifetime.
 self.addEventListener('error', (ev) => {
-  // eslint-disable-next-line no-console
-  console.error('[TK-SW] uncaught error at top level:', ev.message, ev.error);
+  console.error('service-worker: uncaught error:', ev.message, ev.error);
 });
 self.addEventListener('unhandledrejection', (ev) => {
-  // eslint-disable-next-line no-console
-  console.error('[TK-SW] unhandled rejection at top level:', ev.reason);
+  console.error('service-worker: unhandled rejection:', ev.reason);
 });
 
 import {
@@ -761,25 +756,10 @@ class BackgroundService {
 }
 
 // Initialize the background service
-console.log('[TK-SW] about to construct BackgroundService');
-let backgroundService: BackgroundService;
-try {
-  backgroundService = new BackgroundService();
-  console.log('[TK-SW] BackgroundService constructed');
-} catch (err) {
-  console.error('[TK-SW] BackgroundService constructor threw:', err);
-  throw err;
-}
+const backgroundService = new BackgroundService();
 
-// Start initialization when the script loads
 if (isManifestV3()) {
-  console.log('[TK-SW] calling initialize() under MV3');
-  backgroundService.initialize().catch((err) => {
-    console.error('[TK-SW] initialize() rejected:', err);
-  });
+  backgroundService.initialize().catch(console.error);
 } else {
-  console.log('[TK-SW] calling initialize() under MV2');
-  backgroundService.initialize().catch((err) => {
-    console.error('[TK-SW] initialize() rejected:', err);
-  });
+  backgroundService.initialize().catch(console.error);
 }

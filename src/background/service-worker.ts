@@ -3,9 +3,9 @@
  * Handles tab tracking, session management, and cross-browser compatibility
  */
 
-import { 
-  getBrowserAPI, 
-  detectBrowser, 
+import {
+  getBrowserAPI,
+  detectBrowser,
   isManifestV3,
   tabs as tabsAPI,
   storage,
@@ -14,6 +14,7 @@ import {
 } from '../utils/cross-browser';
 import {
   BrowsingSession,
+  BrowsingEvent,
   TabInfo,
   NavigationEvent,
   Message,
@@ -22,14 +23,59 @@ import {
   ExtensionSettings,
   TabEvent,
   WindowEvent,
-  TabKillerError
+  TabKillerError,
+  TrackingConfig
 } from '../shared/types';
 import { initializeDatabaseIntegration, getDatabaseIntegration } from '../database/integration';
+import { LocalEventStore } from '../storage/LocalEventStore';
+import { FocusEmitter, FocusTransition } from '../session/tracking/FocusEmitter';
+
+function generateEventId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// LocalEventStore only reads `batchSize` from TrackingConfig at write time.
+// The other fields exist for the older tracking layer; we supply defaults so
+// the type is satisfied without pretending we use them.
+const OUTBOX_TRACKING_CONFIG: TrackingConfig = {
+  enableTabTracking: true,
+  enableWindowTracking: true,
+  enableNavigationTracking: true,
+  enableSessionTracking: true,
+  enableFormTracking: false,
+  enableScrollTracking: false,
+  enableClickTracking: false,
+  privacyMode: 'moderate',
+  excludeIncognito: false,
+  excludeDomains: [],
+  includeDomains: [],
+  sensitiveFieldFilters: [],
+  batchSize: 100,
+  batchInterval: 30000,
+  maxEventsInMemory: 1000,
+  storageCleanupInterval: 3600000,
+  idleThreshold: 300000,
+  sessionGapThreshold: 900000,
+  domainChangeSessionBoundary: false,
+  enableProductivityMetrics: false,
+  deepWorkThreshold: 0,
+  distractionThreshold: 0
+};
 
 class BackgroundService {
   private state: BackgroundState;
   private browser = getBrowserAPI();
   private currentBrowser = detectBrowser();
+
+  // Outbox: write-ahead log of capture events. T4 (ingest pipeline) drains
+  // these into the graph store; here we only append.
+  private outbox: LocalEventStore;
+
+  // Most recent committed navigation event id per browser tab. Used to
+  // resolve durable Visit ids for opener chains and focus transitions.
+  private latestVisitByTab: Map<number, string> = new Map();
+
+  private focusEmitter: FocusEmitter;
 
   constructor() {
     this.state = {
@@ -43,6 +89,11 @@ class BackgroundService {
         totalSynced: 0
       }
     };
+
+    this.outbox = new LocalEventStore(OUTBOX_TRACKING_CONFIG);
+    this.focusEmitter = new FocusEmitter({
+      resolveVisitForTab: (tabId) => this.latestVisitByTab.get(tabId) ?? null
+    });
   }
 
   /**
@@ -51,10 +102,13 @@ class BackgroundService {
   async initialize(): Promise<void> {
     try {
       console.log(`TabKiller initializing on ${this.currentBrowser}...`);
-      
+
       // Load settings and state
       await this.loadSettings();
       await this.loadState();
+
+      // Bring the outbox online before any capture handlers fire.
+      await this.outbox.initialize();
 
       // Initialize database integration
       try {
@@ -64,13 +118,13 @@ class BackgroundService {
         console.warn('Database integration failed:', error);
         // Continue without database if it fails
       }
-      
+
       // Set up event listeners
       this.setupEventListeners();
-      
+
       // Initialize current tabs
       await this.initializeCurrentTabs();
-      
+
       console.log('TabKiller background service initialized successfully');
     } catch (error) {
       console.error('Failed to initialize TabKiller background service:', error);
@@ -103,6 +157,27 @@ class BackgroundService {
       history.onVisited.addListener(this.handleHistoryVisited.bind(this));
     }
 
+    // webNavigation events (source of ground-truth transitionType).
+    // Filter to http/https so chrome:// and about: navigations don't spam the
+    // outbox. addListener throws if the API is unavailable (e.g. Safari
+    // without the permission granted) — degrade to a warning.
+    if (this.browser.webNavigation && this.browser.webNavigation.onCommitted) {
+      try {
+        this.browser.webNavigation.onCommitted.addListener(
+          this.handleWebNavigationCommitted.bind(this),
+          { url: [{ schemes: ['http', 'https'] }] }
+        );
+      } catch (error) {
+        console.warn('webNavigation.onCommitted registration failed:', error);
+      }
+    } else {
+      console.warn('webNavigation API unavailable; transitionType capture disabled');
+    }
+
+    // Focus transitions unified from tabs.onActivated + windows.onFocusChanged.
+    this.focusEmitter.onFocusTransition(this.handleFocusTransition.bind(this));
+    this.focusEmitter.start();
+
     // Message passing
     messaging.onMessage.addListener(this.handleMessage.bind(this));
 
@@ -134,7 +209,31 @@ class BackgroundService {
       };
 
       this.state.activeTabs.set(tab.id!, tabInfo);
-      
+
+      // Resolve opener → parent visit id. If the opener has no committed
+      // navigation yet, emit without an opener; do not block.
+      const openerTabId = tab.openerTabId;
+      const openerVisitId = openerTabId !== undefined
+        ? this.latestVisitByTab.get(openerTabId) ?? null
+        : null;
+
+      const outboxEvent: BrowsingEvent = {
+        id: generateEventId('tabc'),
+        timestamp: Date.now(),
+        type: 'tab_created',
+        tabId: tab.id!,
+        windowId: tab.windowId,
+        url: tab.url || undefined,
+        title: tab.title || undefined,
+        sessionId: '',
+        metadata: {
+          openerTabId,
+          openerVisitId: openerVisitId ?? undefined,
+          incognito: tab.incognito ?? false
+        }
+      };
+      await this.outbox.storeEvent(outboxEvent);
+
       const event: TabEvent = {
         type: 'created',
         tabId: tab.id!,
@@ -154,6 +253,71 @@ class BackgroundService {
       }
     } catch (error) {
       console.error('Error handling tab created:', error);
+    }
+  }
+
+  /**
+   * Handle webNavigation.onCommitted. This is the ground-truth source of
+   * `transitionType` — tabs.onUpdated does not surface it. The event id
+   * becomes the durable Visit id used by the focus emitter and opener
+   * chain resolution.
+   */
+  private async handleWebNavigationCommitted(
+    details: chrome.webNavigation.WebNavigationTransitionCallbackDetails
+  ): Promise<void> {
+    // Ignore sub-frame navigations; they are not user-visible visits.
+    if (details.frameId !== 0) return;
+
+    const eventId = generateEventId('visit');
+    const event: BrowsingEvent = {
+      id: eventId,
+      timestamp: details.timeStamp,
+      type: 'navigation_committed',
+      tabId: details.tabId,
+      url: details.url,
+      sessionId: '',
+      metadata: {
+        transitionType: details.transitionType as any,
+        transitionQualifiers: details.transitionQualifiers,
+        frameId: details.frameId
+      }
+    };
+
+    try {
+      await this.outbox.storeEvent(event);
+    } catch (error) {
+      console.warn('Failed to append webNavigation event to outbox:', error);
+      return;
+    }
+
+    // Update the tab → visit index; this is what the focus emitter and
+    // opener-chain resolver read from.
+    this.latestVisitByTab.set(details.tabId, eventId);
+
+    // If this tab is currently focused, re-emit a focus transition so the
+    // focus interval closes on the old visit and opens on the new one.
+    await this.focusEmitter.notifyVisitChange(details.tabId, eventId);
+  }
+
+  /**
+   * Forward normalized focus transitions from the FocusEmitter into the
+   * outbox. T4 ingests these into `focus_intervals` on the current Visit.
+   */
+  private async handleFocusTransition(transition: FocusTransition): Promise<void> {
+    const event: BrowsingEvent = {
+      id: generateEventId('focus'),
+      timestamp: transition.at,
+      type: 'focus_transition',
+      sessionId: '',
+      metadata: {
+        focused_visit: transition.focused_visit
+      }
+    };
+
+    try {
+      await this.outbox.storeEvent(event);
+    } catch (error) {
+      console.warn('Failed to append focus transition to outbox:', error);
     }
   }
 
@@ -226,17 +390,22 @@ class BackgroundService {
   private async handleTabRemoved(tabId: number, removeInfo: chrome.tabs.TabRemoveInfo): Promise<void> {
     try {
       const tabInfo = this.state.activeTabs.get(tabId);
-      
+
       if (tabInfo) {
         // Calculate final time spent
         tabInfo.timeSpent += Date.now() - tabInfo.lastAccessed;
-        
+
         // Save tab data before removal
         await this.saveTabData(tabInfo);
-        
+
         // Remove from active tabs
         this.state.activeTabs.delete(tabId);
       }
+
+      // Drop the visit index entry — the tab is gone; keeping it would leak
+      // memory and could resurrect a stale visit id if the browser reuses
+      // the tab id.
+      this.latestVisitByTab.delete(tabId);
 
       const event: TabEvent = {
         type: 'removed',

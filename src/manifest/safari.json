@@ -12,7 +12,8 @@
     "notifications",
     "contextMenus",
     "sessions",
-    "scripting"
+    "scripting",
+    "webNavigation"
   ],
   "host_permissions": [
     "http://*/*",

@@ -2,9 +2,10 @@
 name: temporal-browsing-graph
 status: backlog
 created: 2026-07-10T00:55:11Z
+updated: 2026-07-10T01:15:17Z
 progress: 0%
 prd: .claude/prds/temporal-browsing-graph.md
-github: [Will be updated when synced to GitHub]
+github: https://github.com/zacharywhitley/tabkiller/issues/48
 ---
 
 # Epic: temporal-browsing-graph
@@ -243,14 +244,14 @@ integration test data.
 
 ## Tasks Created
 
-- [ ] 001.md - IndexedDB GraphStore (parallel: true)
-- [ ] 002.md - URL normalization (parallel: true)
-- [ ] 003.md - Capture layer consolidation (parallel: true)
-- [ ] 004.md - Ingest pipeline (parallel: false, depends on 001+002+003)
-- [ ] 005.md - Query API + real-day integration (parallel: false, depends on 004)
-- [ ] 006.md - Cutover + delete pass (parallel: false, depends on 005)
+- [ ] #49 - IndexedDB GraphStore (parallel: true)
+- [ ] #50 - URL normalization (parallel: true)
+- [ ] #51 - Capture layer consolidation (parallel: true)
+- [ ] #52 - Ingest pipeline (parallel: false, depends on #49, #50, #51)
+- [ ] #53 - Query API + real-day integration (parallel: false, depends on #52)
+- [ ] #54 - Cutover + delete pass (parallel: false, depends on #53)
 
 Total tasks: 6
-Parallel tasks: 3 (001, 002, 003 — can all start immediately)
-Sequential tasks: 3 (004 → 005 → 006 form the critical path)
+Parallel tasks: 3 (#49, #50, #51 — can all start immediately)
+Sequential tasks: 3 (#52 → #53 → #54 form the critical path)
 Estimated total effort: ~88 hours (~11 solo working days)

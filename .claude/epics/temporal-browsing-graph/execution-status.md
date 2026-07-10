@@ -2,25 +2,22 @@
 started: 2026-07-10T01:20:00Z
 branch: epic/temporal-browsing-graph
 worktree: /Users/zacharywhitley/git/epic-temporal-browsing-graph
-mode: warm-up
+mode: parallel-fanout
 ---
 
 # Execution Status: temporal-browsing-graph
 
 ## Mode
 
-**Warm-up.** #50 (URL normalization) only, to validate the design against
-real agent-written code before scaling. #49 and #51 are also ready-to-start
-but held until the warm-up completes and the code shape passes review.
+**Parallel fan-out.** Warm-up on #50 passed review (52/52 tests green
+under real jest config; one pre-existing setup.ts bug fixed as a side
+effect). Now running #49 and #51 concurrently — files are disjoint, so
+no coordination cost beyond occasional git-index contention on commit.
 
 ## Active Agents
 
-- **Agent-1** — Issue #50 Stream A (URL normalization + tests) — started 2026-07-10T01:20:00Z
-
-## Ready (Held)
-
-- Issue #49 (GraphStore) — parallel: true, no deps. Held pending #50 review.
-- Issue #51 (Capture consolidation) — parallel: true, no deps. Held pending #50 review.
+- **Agent-2** — Issue #49 Stream A (GraphStore + schema bump) — started 2026-07-10T02:00:00Z
+- **Agent-3** — Issue #51 Stream A (Capture consolidation) — started 2026-07-10T02:00:00Z
 
 ## Blocked
 
@@ -30,14 +27,16 @@ but held until the warm-up completes and the code shape passes review.
 
 ## Completed
 
-_(none yet)_
+- **Issue #50** (URL normalization) — completed 2026-07-10T01:35:00Z.
+  Commits: `783fc07`, `d3e6ae1`, `8f8bf45`. 52/52 tests pass.
+  Side fix: `115c6b2` unblocked jsdom 26 in `tests/setup.ts`.
 
 ## Notes
 
 - Agents work in worktree `../epic-temporal-browsing-graph` on branch
-  `epic/temporal-browsing-graph` (not in the main worktree). Commits appear
-  on that branch; nothing lands on `main` until the epic merges.
-- The warm-up is a deliberate choice: everything in this epic was designed
-  in one session; we're validating that the schema and task specs are
-  clear enough for a fresh agent to produce code we accept before spawning
-  the full fleet.
+  `epic/temporal-browsing-graph`.
+- Prompt hardening after #50: agents are now explicitly told to verify
+  with `npm test` and to report setup blockers rather than sidestep
+  them silently.
+- Prior-art `normalizeUrl` at `src/session/utils/dataUtils.ts:80` has no
+  callers; slated for removal in #54.

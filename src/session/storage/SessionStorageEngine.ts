@@ -132,14 +132,21 @@ export class SessionStorageEngine {
 
     try {
       console.log('Initializing SessionStorageEngine...');
-      
+
       this.db = await this.openDatabase();
       await this.initializeMetadata();
-      await this.performMaintenanceTasks();
-      
+
+      // Maintenance tasks (cleanup, stats, integrity check) are best-effort
+      // and must not block startup — one of them was silently hanging on a
+      // never-settled Promise and preventing the SW's event listeners from
+      // ever being wired. Fire them off and continue.
+      this.performMaintenanceTasks().catch((err) => {
+        console.warn('SessionStorageEngine maintenance tasks failed:', err);
+      });
+
       this.isInitialized = true;
       console.log('SessionStorageEngine initialized successfully');
-      
+
     } catch (error) {
       console.error('Failed to initialize SessionStorageEngine:', error);
       throw error;

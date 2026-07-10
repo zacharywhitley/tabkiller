@@ -127,7 +127,11 @@ export type MessageType =
   | 'session-boundary'
   | 'analytics-update'
   | 'privacy-filter'
-  | 'track-interaction';
+  | 'track-interaction'
+  // Developer debug (temporal-browsing-graph)
+  | 'apply-tag'
+  | 'remove-tag'
+  | 'get-current-session-id';
 
 export interface MessageResponse<T = unknown> {
   success: boolean;

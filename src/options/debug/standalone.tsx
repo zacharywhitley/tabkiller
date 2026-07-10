@@ -6,6 +6,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { GraphQueryPanel } from './GraphQueryPanel';
+import { TagForm } from './TagForm';
 
 const styles = `
   html, body { margin: 0; padding: 0; background: #f6f7f8; color: #111; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -29,6 +30,7 @@ function DebugShell() {
           Does not touch the shipping options-page UI.
         </p>
         <GraphQueryPanel />
+        <TagForm />
       </div>
     </>
   );

@@ -37,6 +37,7 @@ import {
 } from '../shared/types';
 import { LocalEventStore } from '../storage/LocalEventStore';
 import { FocusEmitter, FocusTransition } from '../session/tracking/FocusEmitter';
+import { SessionEmitter } from '../session/tracking/SessionEmitter';
 import { GraphStore } from '../database/graph/store';
 import { GraphIngest, GRAPH_INGEST_ALARM_NAME } from '../database/graph/ingest';
 import { SessionStorageEngine } from '../session/storage/SessionStorageEngine';
@@ -89,6 +90,11 @@ class BackgroundService {
 
   private focusEmitter: FocusEmitter;
 
+  // Session emission. Owned by the SW so `session_started` /
+  // `session_ended` land in the outbox alongside the other capture
+  // events — the graph transformer already has fanouts for both.
+  private sessionEmitter: SessionEmitter;
+
   // Graph ingest pipeline. Lazily wired in initialize() because it needs
   // a live IndexedDB connection from SessionStorageEngine.
   private sessionStorageEngine: SessionStorageEngine;
@@ -112,6 +118,10 @@ class BackgroundService {
     this.focusEmitter = new FocusEmitter({
       resolveVisitForTab: (tabId) => this.latestVisitByTab.get(tabId) ?? null
     });
+    this.sessionEmitter = new SessionEmitter({
+      outbox: this.outbox,
+      onEmit: () => this.graphIngest?.drainSoon()
+    });
   }
 
   /**
@@ -127,6 +137,12 @@ class BackgroundService {
 
       // Bring the outbox online before any capture handlers fire.
       await this.outbox.initialize();
+
+      // Open the fresh session BEFORE anything else can push events into
+      // the outbox. `session_started` must precede the first
+      // `navigation_committed` so the graph transformer emits `in_session`
+      // edges for every visit captured this session.
+      await this.sessionEmitter.start('session_restore');
 
       // Bring the graph ingest pipeline online: open the shared IndexedDB
       // via SessionStorageEngine, hand its connection to a GraphStore,
@@ -273,6 +289,7 @@ class BackgroundService {
           incognito: tab.incognito ?? false
         }
       };
+      await this.sessionEmitter.noteActivity(outboxEvent.timestamp);
       await this.outbox.storeEvent(outboxEvent);
       this.graphIngest?.drainSoon();
 
@@ -302,6 +319,21 @@ class BackgroundService {
     // Ignore sub-frame navigations; they are not user-visible visits.
     if (details.frameId !== 0) return;
 
+    // Read the tab's current title at commit time. It is often stale or
+    // empty for SPAs because the DOM hasn't resolved yet — the follow-up
+    // `tabs.onUpdated{title}` event handles late arrivals — but for
+    // static pages the title is already present here and we want it on
+    // the Page node from the first write.
+    let commitTitle: string | undefined;
+    try {
+      const tab = await this.browser.tabs.get(details.tabId);
+      if (tab && typeof tab.title === 'string' && tab.title.length > 0) {
+        commitTitle = tab.title;
+      }
+    } catch {
+      // Tab may already be closed or unavailable — proceed without a title.
+    }
+
     const eventId = generateEventId('visit');
     const event: BrowsingEvent = {
       id: eventId,
@@ -309,6 +341,7 @@ class BackgroundService {
       type: 'navigation_committed',
       tabId: details.tabId,
       url: details.url,
+      title: commitTitle,
       sessionId: '',
       metadata: {
         transitionType: details.transitionType as any,
@@ -318,6 +351,7 @@ class BackgroundService {
     };
 
     try {
+      await this.sessionEmitter.noteActivity(event.timestamp);
       await this.outbox.storeEvent(event);
     } catch (error) {
       console.warn('Failed to append webNavigation event to outbox:', error);
@@ -343,13 +377,16 @@ class BackgroundService {
       id: generateEventId('focus'),
       timestamp: transition.at,
       type: 'focus_transition',
+      tabId: transition.focused_tab_id ?? undefined,
       sessionId: '',
       metadata: {
-        focused_visit: transition.focused_visit
+        focused_visit: transition.focused_visit,
+        browserTabId: transition.focused_tab_id
       }
     };
 
     try {
+      await this.sessionEmitter.noteActivity(event.timestamp);
       await this.outbox.storeEvent(event);
     } catch (error) {
       console.warn('Failed to append focus transition to outbox:', error);
@@ -368,7 +405,7 @@ class BackgroundService {
   ): Promise<void> {
     try {
       const existingTab = this.state.activeTabs.get(tabId);
-      
+
       if (!existingTab) {
         // Tab wasn't tracked yet, create it
         await this.handleTabCreated(tab);
@@ -385,6 +422,40 @@ class BackgroundService {
       };
 
       this.state.activeTabs.set(tabId, updatedTab);
+
+      // Late-title propagation: SPAs frequently commit navigation with an
+      // empty/stale <title> then set the real one after the DOM resolves.
+      // Emit a `tab_updated` outbox event carrying the new title + the
+      // tab's current URL so the transformer can rewrite the Page node
+      // in place. The title check is against what the DOM now reports,
+      // not against changeInfo.title alone — that field is only set on
+      // the specific update, and we still want to catch a stale-title
+      // Page node when the update carries only a URL.
+      const nextTitle = changeInfo.title ?? tab.title;
+      const nextUrl = changeInfo.url ?? tab.url;
+      if (
+        nextTitle &&
+        nextUrl &&
+        nextTitle !== existingTab.title
+      ) {
+        const titleEvent: BrowsingEvent = {
+          id: generateEventId('tabu'),
+          timestamp: Date.now(),
+          type: 'tab_updated',
+          tabId,
+          windowId: tab.windowId,
+          url: nextUrl,
+          title: nextTitle,
+          sessionId: '',
+          metadata: {}
+        };
+        try {
+          await this.outbox.storeEvent(titleEvent);
+          this.graphIngest?.drainSoon();
+        } catch (error) {
+          console.warn('Failed to append tab_updated title event to outbox:', error);
+        }
+      }
 
       // Track navigation if URL changed
       if (changeInfo.url) {
@@ -555,6 +626,18 @@ class BackgroundService {
         case 'ping':
           return { success: true, data: 'pong' };
 
+        case 'apply-tag':
+          return { success: true, data: await this.applyTagFromMessage(message.payload) };
+
+        case 'remove-tag':
+          return { success: true, data: await this.removeTagFromMessage(message.payload) };
+
+        case 'get-current-session-id':
+          return {
+            success: true,
+            data: this.currentSessionNodeId()
+          };
+
         default:
           throw new TabKillerError(
             'UNKNOWN_MESSAGE',
@@ -631,6 +714,89 @@ class BackgroundService {
 
   private async captureCurrentTabs(): Promise<TabInfo[]> {
     return Array.from(this.state.activeTabs.values());
+  }
+
+  /**
+   * The session_node id (`session_<eventId>`) for the currently open
+   * session. Exposed so the debug-tag form can target the running
+   * session without the developer looking it up by hand.
+   */
+  private currentSessionNodeId(): string | null {
+    const eventId = this.sessionEmitter.currentSessionEventId();
+    return eventId ? `session_${eventId}` : null;
+  }
+
+  /**
+   * Append a `tag_applied` outbox event. Used by the developer debug
+   * form: caller supplies a `slug`, optional `label`, and either an
+   * explicit `sessionNodeId` (from the debug UI where the developer
+   * picked one out of the graph) or falls through to the currently
+   * open session. Fails fast when neither is available so the debug
+   * form surfaces the misuse.
+   */
+  private async applyTagFromMessage(payload: unknown): Promise<{ eventId: string; sessionNodeId: string; slug: string }> {
+    const p = (payload ?? {}) as { slug?: string; label?: string; sessionNodeId?: string };
+    const slug = typeof p.slug === 'string' ? p.slug.trim() : '';
+    if (!slug) throw new TabKillerError('BAD_REQUEST', 'apply-tag: slug is required', 'background');
+
+    const sessionNodeId = p.sessionNodeId?.trim() || this.currentSessionNodeId();
+    if (!sessionNodeId) {
+      throw new TabKillerError(
+        'BAD_REQUEST',
+        'apply-tag: no sessionNodeId supplied and no session is currently open',
+        'background'
+      );
+    }
+
+    const eventId = generateEventId('tagapp');
+    const event: BrowsingEvent = {
+      id: eventId,
+      timestamp: Date.now(),
+      type: 'tag_applied',
+      sessionId: '',
+      metadata: {
+        slug,
+        label: p.label,
+        sessionNodeId
+      }
+    };
+    await this.outbox.storeEvent(event);
+    this.graphIngest?.drainSoon();
+    return { eventId, sessionNodeId, slug };
+  }
+
+  /**
+   * Append a `tag_removed` outbox event. Same target-resolution logic
+   * as `applyTagFromMessage`.
+   */
+  private async removeTagFromMessage(payload: unknown): Promise<{ eventId: string; sessionNodeId: string; slug: string }> {
+    const p = (payload ?? {}) as { slug?: string; sessionNodeId?: string };
+    const slug = typeof p.slug === 'string' ? p.slug.trim() : '';
+    if (!slug) throw new TabKillerError('BAD_REQUEST', 'remove-tag: slug is required', 'background');
+
+    const sessionNodeId = p.sessionNodeId?.trim() || this.currentSessionNodeId();
+    if (!sessionNodeId) {
+      throw new TabKillerError(
+        'BAD_REQUEST',
+        'remove-tag: no sessionNodeId supplied and no session is currently open',
+        'background'
+      );
+    }
+
+    const eventId = generateEventId('tagrem');
+    const event: BrowsingEvent = {
+      id: eventId,
+      timestamp: Date.now(),
+      type: 'tag_removed',
+      sessionId: '',
+      metadata: {
+        slug,
+        sessionNodeId
+      }
+    };
+    await this.outbox.storeEvent(event);
+    this.graphIngest?.drainSoon();
+    return { eventId, sessionNodeId, slug };
   }
 
   /**

@@ -27,6 +27,17 @@ export class LocalEventStore {
   private storageKey = 'tabkiller_events';
   private indexKey = 'tabkiller_event_index';
   private statsKey = 'tabkiller_storage_stats';
+  private drainedKey = 'tabkiller_events_drained';
+
+  // Ids of events already consumed by the graph-ingest drain. Persisted so a
+  // service-worker restart does not replay already-transformed events.
+  // Kept as a Set for O(1) filter; pruned when its backing batch is deleted.
+  private drainedEventIds = new Set<string>();
+
+  // Synthetic batch id used to expose pending (not-yet-flushed) events via
+  // pendingBatches(). Kept as a constant so the ingest layer can recognize
+  // the pre-batch bucket without special-casing on shape.
+  static readonly PENDING_BATCH_ID = 'pending';
   
   // Memory cache for recent events
   private memoryCache = new Map<string, BrowsingEvent>();
@@ -65,7 +76,11 @@ export class LocalEventStore {
       
       // Load event index
       await this.loadEventIndex();
-      
+
+      // Load drained-event set so an ingest restart does not replay events
+      // that have already been transformed into graph nodes/edges.
+      await this.loadDrainedEventIds();
+
       // Setup periodic cleanup
       this.setupPeriodicCleanup();
       
@@ -461,16 +476,18 @@ export class LocalEventStore {
    * Remove a batch from storage
    */
   private async removeBatch(batchId: string): Promise<void> {
+    const removedBatch = this.store.batches.find(b => b.id === batchId);
+
     // Remove from memory
     this.store.batches = this.store.batches.filter(b => b.id !== batchId);
-    
+
     // Remove from storage
     try {
       await storage.remove(`${this.storageKey}_batch_${batchId}`);
     } catch (error) {
       console.warn('Failed to remove batch from storage:', batchId, error);
     }
-    
+
     // Remove from index
     const keysToRemove: string[] = [];
     for (const [eventId, indexEntry] of this.eventIndex) {
@@ -478,11 +495,21 @@ export class LocalEventStore {
         keysToRemove.push(eventId);
       }
     }
-    
+
     for (const key of keysToRemove) {
       this.eventIndex.delete(key);
     }
-    
+
+    // Prune drained-id set: once a batch is gone, ingest can never see those
+    // events again, so tracking their "drained" status is dead weight.
+    if (removedBatch) {
+      let mutated = false;
+      for (const evt of removedBatch.events) {
+        if (this.drainedEventIds.delete(evt.id)) mutated = true;
+      }
+      if (mutated) await this.saveDrainedEventIds();
+    }
+
     // Update storage stats
     await this.updateStorageStats();
   }
@@ -558,13 +585,34 @@ export class LocalEventStore {
    */
   private async saveEventIndex(): Promise<void> {
     try {
-      await storage.set({ 
-        [this.indexKey]: { 
-          index: Array.from(this.eventIndex.entries()) 
-        } 
+      await storage.set({
+        [this.indexKey]: {
+          index: Array.from(this.eventIndex.entries())
+        }
       });
     } catch (error) {
       console.error('Failed to save event index:', error);
+    }
+  }
+
+  private async loadDrainedEventIds(): Promise<void> {
+    try {
+      const stored = await storage.get<{ drained?: string[] }>(this.drainedKey);
+      if (stored.drained) {
+        this.drainedEventIds = new Set(stored.drained);
+      }
+    } catch (error) {
+      console.warn('Failed to load drained event ids:', error);
+    }
+  }
+
+  private async saveDrainedEventIds(): Promise<void> {
+    try {
+      await storage.set({
+        [this.drainedKey]: { drained: Array.from(this.drainedEventIds) }
+      });
+    } catch (error) {
+      console.error('Failed to save drained event ids:', error);
     }
   }
 
@@ -662,13 +710,53 @@ export class LocalEventStore {
     this.store.storageUsed = 0;
     this.memoryCache.clear();
     this.eventIndex.clear();
-    
+    this.drainedEventIds.clear();
+
     // Clear storage
     try {
       await storage.clear();
     } catch (error) {
       console.error('Failed to clear storage:', error);
     }
+  }
+
+  /**
+   * Return all outbox batches whose events have not yet been marked drained
+   * by the graph-ingest pipeline, oldest-first. Includes a synthetic batch
+   * (id `PENDING_BATCH_ID`) for events still in memory that have not been
+   * flushed into a real batch yet — the ingest treats them uniformly.
+   *
+   * Empty batches (fully drained or empty pending) are omitted so callers
+   * do not have to guard against that case.
+   */
+  async pendingBatches(): Promise<Array<{ batchId: string; events: BrowsingEvent[] }>> {
+    const result: Array<{ batchId: string; events: BrowsingEvent[] }> = [];
+
+    const sorted = [...this.store.batches].sort((a, b) => a.createdAt - b.createdAt);
+    for (const batch of sorted) {
+      const undrained = batch.events.filter((e) => !this.drainedEventIds.has(e.id));
+      if (undrained.length > 0) {
+        result.push({ batchId: batch.id, events: undrained });
+      }
+    }
+
+    const pending = this.store.pendingEvents.filter((e) => !this.drainedEventIds.has(e.id));
+    if (pending.length > 0) {
+      result.push({ batchId: LocalEventStore.PENDING_BATCH_ID, events: pending });
+    }
+
+    return result;
+  }
+
+  /**
+   * Record that the graph-ingest has consumed the given events. Persisted so
+   * a service-worker restart does not replay them. Deduplication is by event
+   * id — safe to call with already-marked ids.
+   */
+  async markDrained(eventIds: readonly string[]): Promise<void> {
+    if (eventIds.length === 0) return;
+    for (const id of eventIds) this.drainedEventIds.add(id);
+    await this.saveDrainedEventIds();
   }
 
   /**

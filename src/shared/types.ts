@@ -295,7 +295,9 @@ export type EventType =
   | 'session_ended'
   | 'idle_start'
   | 'idle_end'
-  | 'focus_transition';
+  | 'focus_transition'
+  | 'tag_applied'
+  | 'tag_removed';
 
 export interface BrowsingEvent {
   id: string;

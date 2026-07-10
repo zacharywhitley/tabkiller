@@ -29,6 +29,9 @@ import {
 import { initializeDatabaseIntegration, getDatabaseIntegration } from '../database/integration';
 import { LocalEventStore } from '../storage/LocalEventStore';
 import { FocusEmitter, FocusTransition } from '../session/tracking/FocusEmitter';
+import { GraphStore } from '../database/graph/store';
+import { GraphIngest, GRAPH_INGEST_ALARM_NAME } from '../database/graph/ingest';
+import { SessionStorageEngine } from '../session/storage/SessionStorageEngine';
 
 function generateEventId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -67,8 +70,9 @@ class BackgroundService {
   private browser = getBrowserAPI();
   private currentBrowser = detectBrowser();
 
-  // Outbox: write-ahead log of capture events. T4 (ingest pipeline) drains
-  // these into the graph store; here we only append.
+  // Outbox: write-ahead log of capture events. The graph ingest pipeline
+  // (see graphIngest below) drains these into the graph store; here we
+  // only append and kick a debounced drain.
   private outbox: LocalEventStore;
 
   // Most recent committed navigation event id per browser tab. Used to
@@ -76,6 +80,11 @@ class BackgroundService {
   private latestVisitByTab: Map<number, string> = new Map();
 
   private focusEmitter: FocusEmitter;
+
+  // Graph ingest pipeline. Lazily wired in initialize() because it needs
+  // a live IndexedDB connection from SessionStorageEngine.
+  private sessionStorageEngine: SessionStorageEngine;
+  private graphIngest?: GraphIngest;
 
   constructor() {
     this.state = {
@@ -91,6 +100,7 @@ class BackgroundService {
     };
 
     this.outbox = new LocalEventStore(OUTBOX_TRACKING_CONFIG);
+    this.sessionStorageEngine = new SessionStorageEngine();
     this.focusEmitter = new FocusEmitter({
       resolveVisitForTab: (tabId) => this.latestVisitByTab.get(tabId) ?? null
     });
@@ -109,6 +119,19 @@ class BackgroundService {
 
       // Bring the outbox online before any capture handlers fire.
       await this.outbox.initialize();
+
+      // Bring the graph ingest pipeline online: open the shared IndexedDB
+      // via SessionStorageEngine, hand its connection to a GraphStore,
+      // and hand that to the ingest. Failures here degrade to "old paths
+      // only" — the outbox keeps accumulating and can drain on next boot.
+      try {
+        await this.sessionStorageEngine.initialize();
+        const graph = new GraphStore(this.sessionStorageEngine.getDatabase());
+        this.graphIngest = new GraphIngest({ outbox: this.outbox, graph });
+        await this.graphIngest.initialize();
+      } catch (error) {
+        console.warn('Graph ingest initialization failed:', error);
+      }
 
       // Initialize database integration
       try {
@@ -185,6 +208,25 @@ class BackgroundService {
     this.browser.runtime.onStartup.addListener(this.handleStartup.bind(this));
     this.browser.runtime.onInstalled.addListener(this.handleInstalled.bind(this));
 
+    // Graph-ingest alarm. Fires every 30s so drain runs even when hot
+    // writes are absent (e.g. the SW slept, then woke up with a stale
+    // outbox). The alarms API is optional in some environments — degrade
+    // to drainSoon-only if the API is unavailable.
+    if (this.browser.alarms) {
+      try {
+        this.browser.alarms.create(GRAPH_INGEST_ALARM_NAME, { periodInMinutes: 0.5 });
+        this.browser.alarms.onAlarm.addListener((alarm) => {
+          if (alarm.name === GRAPH_INGEST_ALARM_NAME) {
+            void this.graphIngest?.runAlarm();
+          }
+        });
+      } catch (error) {
+        console.warn('graph-ingest alarm registration failed:', error);
+      }
+    } else {
+      console.warn('chrome.alarms unavailable; graph ingest will only run on drainSoon()');
+    }
+
     // Context menu (if supported)
     if (this.browser.contextMenus) {
       this.setupContextMenus();
@@ -233,6 +275,7 @@ class BackgroundService {
         }
       };
       await this.outbox.storeEvent(outboxEvent);
+      this.graphIngest?.drainSoon();
 
       const event: TabEvent = {
         type: 'created',
@@ -289,6 +332,7 @@ class BackgroundService {
       console.warn('Failed to append webNavigation event to outbox:', error);
       return;
     }
+    this.graphIngest?.drainSoon();
 
     // Update the tab → visit index; this is what the focus emitter and
     // opener-chain resolver read from.
@@ -318,7 +362,9 @@ class BackgroundService {
       await this.outbox.storeEvent(event);
     } catch (error) {
       console.warn('Failed to append focus transition to outbox:', error);
+      return;
     }
+    this.graphIngest?.drainSoon();
   }
 
   /**

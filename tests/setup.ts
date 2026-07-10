@@ -257,15 +257,11 @@ afterEach(() => {
   }
 };
 
-// Setup jsdom environment  
-delete (window as any).location;
-(window as any).location = {
-  href: 'https://example.com',
-  origin: 'https://example.com',
-  pathname: '/',
-  search: '',
-  hash: ''
-};
+// Setup jsdom environment
+// jsdom 26 makes both `delete window.location` and defineProperty on the
+// location slot throw. jsdom does allow navigation by assigning to
+// window.location.href, which updates every derived field.
+window.location.href = 'https://example.com/';
 
 // Mock IntersectionObserver
 global.IntersectionObserver = jest.fn().mockImplementation(() => ({

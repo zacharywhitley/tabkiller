@@ -46,12 +46,26 @@ import { transformEvent, type IngestContext } from './transformers';
  */
 const BUFFER_EXPIRY_MS = 60_000;
 
+/**
+ * Focus-arrival-before-Visit buffer expiry. Focus events that reference a
+ * Visit id not yet in the graph get parked here keyed by browser_tab_id;
+ * they drain against the next Visit created for that tab. Five seconds
+ * bounds unbounded growth if a browser tab keeps firing focus without
+ * ever committing a navigation.
+ */
+const FOCUS_BUFFER_EXPIRY_MS = 5_000;
+
 const DRAIN_SOON_DEBOUNCE_MS = 500;
 
 export const GRAPH_INGEST_ALARM_NAME = 'graph-ingest';
 
 interface BufferedEntry {
   value: string;
+  expiresAt: number;
+}
+
+interface BufferedFocusEvent {
+  event: BrowsingEvent;
   expiresAt: number;
 }
 
@@ -78,6 +92,7 @@ export class GraphIngest {
   // source of truth and drain reads always start from an outbox pointer.
   private readonly openerBuffer = new Map<number, BufferedEntry>();
   private readonly searchBuffer = new Map<number, BufferedEntry>();
+  private readonly focusBuffer = new Map<number, BufferedFocusEvent[]>();
   private latestVisitByTab = new Map<number, string>();
   private currentlyFocusedVisitId: string | null = null;
   private currentSessionId: string | null = null;
@@ -187,6 +202,23 @@ export class GraphIngest {
   // ---- Per-event pipeline ----
 
   private async applyEvent(event: BrowsingEvent): Promise<void> {
+    // Focus-transition intercept: focus events may reference a Visit that
+    // is not yet materialized in the graph — a real ordering race we've
+    // observed when the SW's tab->visit map advances mid-batch. Rather
+    // than warn on every miss, park the event keyed by browser_tab_id
+    // and replay it after the next Visit for that tab is created.
+    if (event.type === 'focus_transition') {
+      const browserTabId = this.readFocusTabId(event);
+      const focusedVisit = this.readFocusedVisit(event);
+      if (browserTabId != null && focusedVisit != null) {
+        const exists = await this.graph.getNode(focusedVisit);
+        if (!exists) {
+          this.pushFocusBuffer(browserTabId, event);
+          return;
+        }
+      }
+    }
+
     const context = this.makeContext();
     const batch = await transformEvent(event, context);
 
@@ -199,7 +231,71 @@ export class GraphIngest {
     // subsequent focus_transition for the same tab would resolve to the
     // wrong visit.
     if (event.type === 'navigation_committed' && event.tabId !== undefined) {
-      this.latestVisitByTab.set(event.tabId, `visit_${event.id}`);
+      const newVisitId = `visit_${event.id}`;
+      this.latestVisitByTab.set(event.tabId, newVisitId);
+      // Drain any focus events that were waiting on a Visit for this tab.
+      // Each is re-issued with `focused_visit` rewritten to the new visit
+      // id: the buffer's semantic is "this focus event landed on tab T
+      // before the Visit was known — associate it with the next Visit T
+      // gets", not "replay the original focus_visit id".
+      await this.drainFocusBuffer(event.tabId, newVisitId);
+    }
+  }
+
+  private readFocusTabId(event: BrowsingEvent): number | null {
+    if (typeof event.tabId === 'number') return event.tabId;
+    const meta = event.metadata?.browserTabId;
+    return typeof meta === 'number' ? meta : null;
+  }
+
+  private readFocusedVisit(event: BrowsingEvent): string | null {
+    const value = event.metadata?.focused_visit;
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  private pushFocusBuffer(browserTabId: number, event: BrowsingEvent): void {
+    this.pruneFocusBuffer();
+    const list = this.focusBuffer.get(browserTabId) ?? [];
+    list.push({ event, expiresAt: this.now() + FOCUS_BUFFER_EXPIRY_MS });
+    this.focusBuffer.set(browserTabId, list);
+  }
+
+  private async drainFocusBuffer(browserTabId: number, newVisitId: string): Promise<void> {
+    this.pruneFocusBuffer();
+    const list = this.focusBuffer.get(browserTabId);
+    if (!list || list.length === 0) return;
+    this.focusBuffer.delete(browserTabId);
+
+    for (const { event } of list) {
+      // Rewrite the buffered event's focused_visit to the freshly-created
+      // Visit id, preserve the original timestamp so the focus interval
+      // reflects the user's actual attention window, and dispatch through
+      // the normal transform + write path so all the interval
+      // reconciliation stays in one place.
+      const rewritten: BrowsingEvent = {
+        ...event,
+        metadata: {
+          ...event.metadata,
+          focused_visit: newVisitId,
+        },
+      };
+      const context = this.makeContext();
+      const batch = await transformEvent(rewritten, context);
+      if ((batch.nodes && batch.nodes.length > 0) || (batch.edges && batch.edges.length > 0)) {
+        await this.graph.writeBatch(batch);
+      }
+    }
+  }
+
+  private pruneFocusBuffer(): void {
+    const now = this.now();
+    for (const [tabId, list] of this.focusBuffer) {
+      const kept = list.filter((entry) => entry.expiresAt > now);
+      if (kept.length === 0) {
+        this.focusBuffer.delete(tabId);
+      } else if (kept.length !== list.length) {
+        this.focusBuffer.set(tabId, kept);
+      }
     }
   }
 

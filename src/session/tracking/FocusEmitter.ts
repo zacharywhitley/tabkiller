@@ -33,6 +33,14 @@ type TabActivateInfo = browserPolyfill.Tabs.OnActivatedActiveInfoType;
 export interface FocusTransition {
   at: number;
   focused_visit: string | null;
+  /**
+   * The browser tab id whose focus state changed. `null` iff the whole
+   * window lost focus (chrome.windows.WINDOW_ID_NONE). Needed by the
+   * ingest layer so it can key its focus-arrival-before-Visit buffer
+   * by tab id — see `GraphIngest.applyEvent` for the drain-time race
+   * this closes.
+   */
+  focused_tab_id: number | null;
 }
 
 export type FocusTransitionHandler = (event: FocusTransition) => void | Promise<void>;
@@ -148,7 +156,7 @@ export class FocusEmitter {
     if (this.focusedVisitId === visitId) return;
 
     this.focusedVisitId = visitId;
-    await this.emit({ at: this.now(), focused_visit: visitId });
+    await this.emit({ at: this.now(), focused_visit: visitId, focused_tab_id: tabId });
   }
 
   private async transitionTo(tabId: number | null, visitId: string | null): Promise<void> {
@@ -166,7 +174,7 @@ export class FocusEmitter {
 
     this.focusedTabId = tabId;
     this.focusedVisitId = visitId;
-    await this.emit({ at: this.now(), focused_visit: visitId });
+    await this.emit({ at: this.now(), focused_visit: visitId, focused_tab_id: tabId });
   }
 
   private async emit(event: FocusTransition): Promise<void> {

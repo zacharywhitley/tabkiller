@@ -97,7 +97,7 @@ describe('FocusEmitter', () => {
     advance(5);
     await mock.fireTabActivated({ tabId: 42, windowId: 7 });
 
-    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_v1' }]);
+    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_v1', focused_tab_id: 42 }]);
   });
 
   it('emits two transitions across Firefox WINDOW_ID_NONE blip: one null and one new-visit', async () => {
@@ -114,7 +114,7 @@ describe('FocusEmitter', () => {
 
     // Start focused on window 1 / tab 10.
     await mock.fireWindowFocusChanged(1);
-    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_a' }]);
+    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_a', focused_tab_id: 10 }]);
 
     // Firefox switches windows: NONE blip, then new window focused.
     advance(10);
@@ -123,9 +123,9 @@ describe('FocusEmitter', () => {
     await mock.fireWindowFocusChanged(2);
 
     expect(captured).toEqual([
-      { at: 1_000, focused_visit: 'visit_a' },
-      { at: 1_010, focused_visit: null },
-      { at: 1_040, focused_visit: 'visit_b' }
+      { at: 1_000, focused_visit: 'visit_a', focused_tab_id: 10 },
+      { at: 1_010, focused_visit: null, focused_tab_id: null },
+      { at: 1_040, focused_visit: 'visit_b', focused_tab_id: 20 }
     ]);
   });
 
@@ -146,8 +146,8 @@ describe('FocusEmitter', () => {
     await mock.fireWindowFocusChanged(WINDOW_ID_NONE);
 
     expect(captured).toEqual([
-      { at: 1_000, focused_visit: 'visit_x' },
-      { at: 1_050, focused_visit: null }
+      { at: 1_000, focused_visit: 'visit_x', focused_tab_id: 99 },
+      { at: 1_050, focused_visit: null, focused_tab_id: null }
     ]);
   });
 
@@ -167,7 +167,7 @@ describe('FocusEmitter', () => {
     await mock.fireTabActivated({ tabId: 5, windowId: 1 });
     await mock.fireTabActivated({ tabId: 5, windowId: 1 });
 
-    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_same' }]);
+    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_same', focused_tab_id: 5 }]);
   });
 
   it('deduplicates when switching to a tab whose resolved visit is the same (e.g. both have no committed navigation)', async () => {
@@ -205,7 +205,7 @@ describe('FocusEmitter', () => {
     emitter.start();
 
     await mock.fireTabActivated({ tabId: 42, windowId: 1 });
-    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_old' }]);
+    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_old', focused_tab_id: 42 }]);
 
     // Simulate the webNavigation.onCommitted flow: visit map updates, then
     // notifyVisitChange fires. Emitter should re-emit with the new visit id.
@@ -214,8 +214,8 @@ describe('FocusEmitter', () => {
     await emitter.notifyVisitChange(42, 'visit_new');
 
     expect(captured).toEqual([
-      { at: 1_000, focused_visit: 'visit_old' },
-      { at: 1_500, focused_visit: 'visit_new' }
+      { at: 1_000, focused_visit: 'visit_old', focused_tab_id: 42 },
+      { at: 1_500, focused_visit: 'visit_new', focused_tab_id: 42 }
     ]);
   });
 
@@ -257,14 +257,14 @@ describe('FocusEmitter', () => {
     // Set up a real focus first so we can observe transitions.
     visits.set(1, 'visit_start');
     await emitter.handleTabActivated({ tabId: 1, windowId: 999 });
-    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_start' }]);
+    expect(captured).toEqual([{ at: 1_000, focused_visit: 'visit_start', focused_tab_id: 1 }]);
 
     advance(30);
     await mock.fireWindowFocusChanged(42);
 
     expect(captured).toEqual([
-      { at: 1_000, focused_visit: 'visit_start' },
-      { at: 1_030, focused_visit: null }
+      { at: 1_000, focused_visit: 'visit_start', focused_tab_id: 1 },
+      { at: 1_030, focused_visit: null, focused_tab_id: null }
     ]);
   });
 

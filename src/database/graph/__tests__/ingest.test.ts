@@ -291,6 +291,95 @@ describe('GraphIngest.drain — happy path', () => {
   });
 });
 
+describe('GraphIngest.drain — focus buffer (capture-completeness Gap 2)', () => {
+  it('buffers a focus_transition whose focused_visit is not yet in the graph, then drains against the next Visit created for that tab', async () => {
+    const graph = await freshGraph();
+    const outbox = new FakeOutbox();
+
+    // The focus_transition references visit_predicted, which never
+    // materializes as its own outbox event — simulating the race where
+    // the SW's local tab→visit map advanced ahead of the outbox drain.
+    // The follow-up navigation_committed then defines the actual Visit,
+    // and the buffered focus event should re-issue against it.
+    outbox.push('b1', [
+      makeEvent({ id: 'tabc_1', type: 'tab_created', timestamp: 1000, tabId: 42, windowId: 7 }),
+      makeEvent({
+        id: 'focus_early', type: 'focus_transition', timestamp: 1400,
+        tabId: 42,
+        metadata: {
+          focused_visit: visitNodeId('nav_predicted_but_never_appended'),
+          browserTabId: 42,
+        },
+      }),
+      makeEvent({
+        id: 'nav_actual', type: 'navigation_committed', timestamp: 1500,
+        tabId: 42, url: 'https://example.com/',
+      }),
+    ]);
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const ingest = new GraphIngest({ outbox: outbox as any, graph });
+      await ingest.drain();
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    // The Visit that was ultimately created for tab 42 must have picked
+    // up the buffered focus event's timestamp on its focus_intervals —
+    // NOT the timestamp of a hypothetical replay at drain time.
+    const visit = await graph.getNode<VisitNode>(visitNodeId('nav_actual'));
+    expect(visit).toBeDefined();
+    expect(visit!.focus_intervals).toEqual([{ start: 1400, end: null }]);
+
+    // The focus event should NOT have produced a "visit not in graph"
+    // warning — that's the whole point of the buffer.
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('focus_transition incoming visit not in graph'),
+      expect.anything(),
+    );
+
+    // Both events are drained (the buffered focus event still gets
+    // marked drained because applyEvent returned normally after
+    // buffering — it's the outbox's responsibility to not replay).
+    expect(outbox.drainedIds().has('focus_early')).toBe(true);
+    expect(outbox.drainedIds().has('nav_actual')).toBe(true);
+  });
+
+  it('processes a focus_transition normally when its focused_visit is already in the graph', async () => {
+    const graph = await freshGraph();
+    const outbox = new FakeOutbox();
+
+    // Two batches so the Visit is definitely committed before the focus
+    // event runs. Focus event references the real Visit id — no buffer
+    // path exercised — and the focus_intervals should reflect that.
+    outbox.push('b1', [
+      makeEvent({ id: 'tabc_1', type: 'tab_created', timestamp: 1000, tabId: 42, windowId: 7 }),
+      makeEvent({
+        id: 'nav_1', type: 'navigation_committed', timestamp: 1500,
+        tabId: 42, url: 'https://a.example/',
+      }),
+    ]);
+    const ingest = new GraphIngest({ outbox: outbox as any, graph });
+    await ingest.drain();
+
+    outbox.push('b2', [
+      makeEvent({
+        id: 'focus_1', type: 'focus_transition', timestamp: 2000,
+        tabId: 42,
+        metadata: {
+          focused_visit: visitNodeId('nav_1'),
+          browserTabId: 42,
+        },
+      }),
+    ]);
+    await ingest.drain();
+
+    const visit = await graph.getNode<VisitNode>(visitNodeId('nav_1'));
+    expect(visit!.focus_intervals).toEqual([{ start: 2000, end: null }]);
+  });
+});
+
 describe('GraphIngest.drain — atomicity', () => {
   it('a failing transformer leaves no partial writes for that event and lets later events still process', async () => {
     const graph = await freshGraph();

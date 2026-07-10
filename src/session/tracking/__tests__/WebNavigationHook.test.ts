@@ -99,20 +99,6 @@ jest.mock('../../../utils/cross-browser', () => {
   };
 });
 
-// Stub out the database integration so we don't touch IndexedDB.
-jest.mock('../../../database/integration', () => ({
-  initializeDatabaseIntegration: jest.fn(async () => undefined),
-  getDatabaseIntegration: () => ({
-    handleTabCreated: jest.fn(async () => undefined),
-    handleNavigation: jest.fn(async () => undefined),
-    createSession: jest.fn(async () => undefined),
-    getDashboardData: jest.fn(async () => ({})),
-    searchHistory: jest.fn(async () => ({ pages: [], sessions: [] })),
-    getBrowsingPatterns: jest.fn(async () => []),
-    getHealthStatus: jest.fn(async () => ({ initialized: true }))
-  })
-}));
-
 // Stub FocusEmitter — its own tests cover the state machine. Here we only
 // need it to not blow up when instantiated and to let us assert that the
 // service worker wires notifyVisitChange after each committed navigation.

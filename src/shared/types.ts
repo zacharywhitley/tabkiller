@@ -117,10 +117,7 @@ export type MessageType =
   | 'get-status'
   | 'ping'
   // Database operations
-  | 'get-dashboard-data'
   | 'search-history'
-  | 'get-browsing-patterns'
-  | 'get-database-status'
   // Content script specific
   | 'capture-page'
   | 'get-form-data'  

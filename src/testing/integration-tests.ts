@@ -7,7 +7,6 @@ import { performanceTestRunner, PerformanceBenchmarks } from './PerformanceTestS
 import { performanceMonitor } from '../performance/PerformanceMonitor';
 import { memoryManager } from '../performance/MemoryManager';
 import { browserOptimizationManager } from '../performance/BrowserOptimizations';
-import { OptimizedQueryEngine } from '../database/optimized-queries';
 import { detectBrowser } from '../utils/cross-browser';
 
 /**

@@ -36,6 +36,7 @@ import { GraphStore } from '../store';
 import {
   causalPredecessors,
   pagesOpenedFromDomain,
+  tabTreeForSession,
   tabTreeForTag,
   visitFocusedAt,
   visitsInTagPredatingTag,
@@ -352,6 +353,43 @@ describe('tabTreeForTag', () => {
   it('returns an empty array for an unknown tag slug', async () => {
     const { store } = await freshLoadedStore();
     const result = await tabTreeForTag(store, 'never-tagged');
+    expect(result).toEqual([]);
+  });
+});
+
+// ---- 6b. tabTreeForSession (same shape as tabTreeForTag, keyed by session id) ----
+
+describe('tabTreeForSession', () => {
+  it("returns the same tab tree for session s1 that 'wasted-time' produces", async () => {
+    const { store } = await freshLoadedStore();
+
+    const bySession = await tabTreeForSession(store, 's1');
+    const byTag = await tabTreeForTag(store, 'wasted-time');
+
+    // Both queries should reconstruct the same tree because s1 is the
+    // session tagged 'wasted-time'. The shared helper is exercised on
+    // both paths — proves the refactor didn't drift.
+    expect(bySession).toHaveLength(1);
+    expect(byTag).toHaveLength(1);
+
+    const a = bySession[0]!;
+    const b = byTag[0]!;
+    expect(a.session.id).toBe('s1');
+    expect(b.session.id).toBe('s1');
+    expect(a.tabs.map((t) => t.tab.id)).toEqual(b.tabs.map((t) => t.tab.id));
+    expect(a.tabs.map((t) => t.parent_tab_id)).toEqual(
+      b.tabs.map((t) => t.parent_tab_id),
+    );
+    for (let i = 0; i < a.tabs.length; i++) {
+      expect(a.tabs[i]!.visits.map((v) => v.visit.id)).toEqual(
+        b.tabs[i]!.visits.map((v) => v.visit.id),
+      );
+    }
+  });
+
+  it('returns an empty array when the session id does not exist', async () => {
+    const { store } = await freshLoadedStore();
+    const result = await tabTreeForSession(store, 'no-such-session');
     expect(result).toEqual([]);
   });
 });

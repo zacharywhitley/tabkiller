@@ -10,6 +10,12 @@
  *   5. visitsOnScreenBetween    — temporal-window visibility (the Q4 split)
  *   6. tabTreeForTag            — tab tree for every session with a tag
  *
+ * Plus one sibling of #6 added for the debug-panel Tab-Tree view:
+ *
+ *   6b. tabTreeForSession       — same shape as tabTreeForTag, keyed by
+ *                                 a Session id so untagged sessions can
+ *                                 be inspected directly.
+ *
  * Ported from `spike/temporal-graph/queries.ts` with the API-name update
  * called out in the PRD: `visitsBefore` became `causalPredecessors` and a
  * new sibling `visitsOnScreenBetween` was added because the spike surfaced
@@ -291,40 +297,59 @@ export async function tabTreeForTag(
   for (const te of await g.inPoint(tag.id, 'tagged_with')) {
     const session = await g.getNode<SessionNode>(te.from_id);
     if (!session) continue;
-
-    const byTab = new Map<string, VisitNode[]>();
-    for (const ve of await g.inInterval(session.id, 'in_session')) {
-      const visit = await g.getNode<VisitNode>(ve.from_id);
-      if (!visit) continue;
-      const tabEdge = (await g.outInterval(visit.id, 'in_tab'))[0];
-      if (!tabEdge) continue;
-      const list = byTab.get(tabEdge.to_id) ?? [];
-      list.push(visit);
-      byTab.set(tabEdge.to_id, list);
-    }
-
-    const tabs: TabTreeTab[] = [];
-    for (const [tabId, visits] of byTab) {
-      const tab = await g.getNode<TabNode>(tabId);
-      if (!tab) continue;
-
-      visits.sort((a, b) => a.at_time - b.at_time);
-      const firstVisit = visits[0];
-      const parent_tab_id = firstVisit ? await parentTabFor(g, firstVisit) : null;
-
-      const enriched: TabTreeTab['visits'] = [];
-      for (const v of visits) {
-        enriched.push({ visit: v, page: await pageForVisit(g, v) });
-      }
-
-      tabs.push({ tab, parent_tab_id, visits: enriched });
-    }
-
-    tabs.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
-    result.push({ session, tabs });
+    result.push(await buildTabTreeForSession(g, session));
   }
 
   return result;
+}
+
+// tabTreeForSession — same shape as `tabTreeForTag`, keyed by session id
+// so a caller (e.g. the debug panel) can inspect an untagged session
+// without needing a tag. Always returns a 1-element array on hit for API
+// symmetry with `tabTreeForTag`.
+export async function tabTreeForSession(
+  g: GraphStore,
+  sessionId: string,
+): Promise<TabTreeSession[]> {
+  const session = await g.getNode<SessionNode>(sessionId);
+  if (!session || session.type !== 'Session') return [];
+  return [await buildTabTreeForSession(g, session)];
+}
+
+async function buildTabTreeForSession(
+  g: GraphStore,
+  session: SessionNode,
+): Promise<TabTreeSession> {
+  const byTab = new Map<string, VisitNode[]>();
+  for (const ve of await g.inInterval(session.id, 'in_session')) {
+    const visit = await g.getNode<VisitNode>(ve.from_id);
+    if (!visit) continue;
+    const tabEdge = (await g.outInterval(visit.id, 'in_tab'))[0];
+    if (!tabEdge) continue;
+    const list = byTab.get(tabEdge.to_id) ?? [];
+    list.push(visit);
+    byTab.set(tabEdge.to_id, list);
+  }
+
+  const tabs: TabTreeTab[] = [];
+  for (const [tabId, visits] of byTab) {
+    const tab = await g.getNode<TabNode>(tabId);
+    if (!tab) continue;
+
+    visits.sort((a, b) => a.at_time - b.at_time);
+    const firstVisit = visits[0];
+    const parent_tab_id = firstVisit ? await parentTabFor(g, firstVisit) : null;
+
+    const enriched: TabTreeTab['visits'] = [];
+    for (const v of visits) {
+      enriched.push({ visit: v, page: await pageForVisit(g, v) });
+    }
+
+    tabs.push({ tab, parent_tab_id, visits: enriched });
+  }
+
+  tabs.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
+  return { session, tabs };
 }
 
 // ---- Internal helpers ----

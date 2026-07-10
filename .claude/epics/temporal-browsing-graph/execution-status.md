@@ -17,18 +17,26 @@ the work, but only by luck. Rest of the epic runs one agent at a time.
 
 ## Active Agents
 
-- **Agent-5** — Issue #53 Stream A (Query API + debug panel) — started 2026-07-10T03:00:00Z
+- **Agent-6** — Issue #54 Stream A (Cutover + delete pass) — started 2026-07-10T04:00:00Z
+
+## Ordering Change
+
+Original plan: #53 real-day validation → #54 cutover. Actual sequencing:
+**#54 runs first** because `npm run build:chrome` fails on the current
+worktree — `level-browserify` isn't installed and the service worker
+still imports the LevelGraph-based `src/database/integration.ts` chain.
+Real-day validation happens after the clean artifact exists.
 
 ## Pending Manual Step
 
-- **Issue #53 real-day validation** — developer-owned. After Agent-5's
-  code lands, the developer installs the extension, uses it for a day,
-  runs every query against captured data, and documents findings in
-  `real-day-findings.md`. The epic's acceptance test.
+- **Issue #53 real-day validation** — developer-owned, deferred until
+  after Agent-6 delivers a buildable extension. Then the developer
+  installs, uses for a day, runs every query, and documents findings
+  in `real-day-findings.md`. Still the epic's acceptance test.
 
 ## Blocked
 
-- Issue #54 (Cutover + delete pass) — waits on #53
+_(none — #54 is the last automatable task in the epic)_
 
 ## Completed
 
@@ -51,6 +59,13 @@ the work, but only by luck. Rest of the epic runs one agent at a time.
   Follow-up flagged: `tab_removed`, `session_started`/`session_ended`,
   `tag_applied`/`tag_removed` transformers exist but aren't yet emitted
   by the capture layer.
+- **Issue #53** (Query API + debug panel) — 2026-07-10T03:20:00Z.
+  Commits: `befeaaf`, `b894f14`, `194ba03`. 23 new tests. 162 total in
+  the epic's suites. Added `GraphStore.visitsInAtTimeRange` (index-backed
+  range cursor, no schema change). `visitsOnScreenBetween` verified for
+  the spike's Q4 finding (old-`at_time`-but-still-overlapping case).
+  Debug panel gated behind `localStorage.TABKILLER_DEBUG === '1'`.
+  Real-day validation deferred (see Ordering Change).
 
 ## Notes
 

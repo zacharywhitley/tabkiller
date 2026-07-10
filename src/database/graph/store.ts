@@ -34,6 +34,7 @@ import type {
   IntervalEdge,
   PointEdgeType,
   IntervalEdgeType,
+  VisitNode,
 } from './types';
 
 // Discriminator sets kept close to the type declarations so a compiler
@@ -179,6 +180,46 @@ export class GraphStore {
     const index = store.index(indexName);
     const range = IDBKeyRange.bound([type, -Infinity], [type, Infinity]);
     return awaitRequest<AnyEdge[]>(index.getAll(range));
+  }
+
+  // ---- Read: Visit nodes by at_time range ----
+
+  /**
+   * Cursor over the `(type, at_time)` node index restricted to Visit
+   * records with `at_time` in `[lower, upper]`. Direction 'asc' walks in
+   * increasing at_time order, 'desc' in decreasing order. Nodes without
+   * an `at_time` field are absent from the index and never appear.
+   *
+   * The query API (`src/database/graph/queries.ts`) needs this to walk
+   * visits around a probe time without falling back to a full node-store
+   * scan.
+   */
+  async visitsInAtTimeRange(
+    lower: number,
+    upper: number,
+    direction: 'asc' | 'desc' = 'asc',
+  ): Promise<VisitNode[]> {
+    const tx = this.db.transaction(STORE_NAMES.GRAPH_NODES, 'readonly');
+    const store = tx.objectStore(STORE_NAMES.GRAPH_NODES);
+    const index = store.index(INDEX_NAMES.GRAPH_NODE_BY_TYPE_AT_TIME);
+    const range = IDBKeyRange.bound(['Visit', lower], ['Visit', upper]);
+    const cursorDirection: IDBCursorDirection = direction === 'asc' ? 'next' : 'prev';
+
+    const results: VisitNode[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const request = index.openCursor(range, cursorDirection);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        results.push(cursor.value as VisitNode);
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+    return results;
   }
 
   // ---- Identity lookups by named single-field index ----

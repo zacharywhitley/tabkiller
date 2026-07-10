@@ -7,7 +7,10 @@ module.exports = {
   },
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: [
-    '**/__tests__/**/*.+(ts|tsx|js)',
+    // Files inside a __tests__/ directory must still be named *.test.* or
+    // *.spec.* — otherwise co-located fixtures and helpers (which live
+    // beside the tests they support) get picked up as empty suites.
+    '**/__tests__/**/*.(test|spec).+(ts|tsx|js)',
     '**/*.(test|spec).+(ts|tsx|js)'
   ],
   transform: {

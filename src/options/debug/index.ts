@@ -42,10 +42,16 @@ export function isDebugPanelEnabled(): boolean {
  * We deliberately do NOT construct a `SessionStorageEngine` here — it
  * runs maintenance tasks on initialize that we do not want a debug panel
  * to trigger.
+ *
+ * Opens WITHOUT a version specified. Passing `DATABASE_VERSION` would
+ * race the service worker: if the DB doesn't exist yet, the debug open
+ * creates an empty shell at that version with no object stores, and
+ * the SW's later open sees a matching version and never runs
+ * onupgradeneeded. Open without a version reads whatever's there.
  */
 export function openGraphStoreForDebug(): Promise<GraphStore> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    const request = indexedDB.open(DATABASE_NAME);
     request.onerror = () => {
       reject(new Error(`Failed to open ${DATABASE_NAME}: ${request.error?.message ?? 'unknown error'}`));
     };
@@ -54,6 +60,8 @@ export function openGraphStoreForDebug(): Promise<GraphStore> {
     };
     request.onsuccess = () => {
       const db = request.result;
+      const version = db.version;
+      const stores = Array.from(db.objectStoreNames);
       if (
         !db.objectStoreNames.contains('graph_nodes') ||
         !db.objectStoreNames.contains('graph_edges')
@@ -61,7 +69,10 @@ export function openGraphStoreForDebug(): Promise<GraphStore> {
         db.close();
         reject(
           new Error(
-            'Graph object stores not found. The background service worker must run once to initialize the schema.',
+            `Graph object stores not found (DB at version ${version}, stores: [${stores.join(', ')}]). ` +
+              `Force-wake the service worker (chrome://extensions → click "Service worker") ` +
+              `then navigate to a page so onupgradeneeded runs. If the DB is stuck at a version >= ${DATABASE_VERSION} ` +
+              `without graph_nodes, delete "${DATABASE_NAME}" in DevTools → Application → IndexedDB and reload the extension.`,
           ),
         );
         return;

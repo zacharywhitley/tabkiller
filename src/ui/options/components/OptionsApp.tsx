@@ -1,12 +1,17 @@
 import React from 'react';
 import { App } from '../../common/components';
 import { ExtensionRouter, NavigationProvider, Navigation, NavigationControls } from '../../../router';
+import { GraphQueryPanel } from '../../../options/debug/GraphQueryPanel';
+import { isDebugPanelEnabled } from '../../../options/debug';
 
 /**
  * Main Options Application Component
  * Renders the TabKiller options/settings interface with routing support
  */
 export const OptionsApp: React.FC = () => {
+  // Developer-only. Gated on `localStorage.TABKILLER_DEBUG === '1'`.
+  const showGraphDebug = isDebugPanelEnabled();
+
   return (
     <App context="options">
       <ExtensionRouter context="options">
@@ -29,6 +34,8 @@ export const OptionsApp: React.FC = () => {
                 {/* Router content will be rendered here */}
               </div>
             </main>
+
+            {showGraphDebug && <GraphQueryPanel />}
           </div>
         </NavigationProvider>
       </ExtensionRouter>

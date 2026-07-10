@@ -17,11 +17,17 @@ the work, but only by luck. Rest of the epic runs one agent at a time.
 
 ## Active Agents
 
-- **Agent-4** — Issue #52 Stream A (Ingest pipeline) — started 2026-07-10T02:30:00Z
+- **Agent-5** — Issue #53 Stream A (Query API + debug panel) — started 2026-07-10T03:00:00Z
+
+## Pending Manual Step
+
+- **Issue #53 real-day validation** — developer-owned. After Agent-5's
+  code lands, the developer installs the extension, uses it for a day,
+  runs every query against captured data, and documents findings in
+  `real-day-findings.md`. The epic's acceptance test.
 
 ## Blocked
 
-- Issue #53 (Query API + real-day) — waits on #52
 - Issue #54 (Cutover + delete pass) — waits on #53
 
 ## Completed
@@ -38,6 +44,13 @@ the work, but only by luck. Rest of the epic runs one agent at a time.
   FocusEmitter with dual-fire dedup.
 - Side fix `b108754` — jsdom URL via `testEnvironmentOptions`, dropped
   the noisy `window.location.href = ...` shim from setup.ts.
+- **Issue #52** (Ingest pipeline) — 2026-07-10T02:55:00Z.
+  Commits: `917f0f2`, `e9b26d9`. 37 new tests (28 transformers + 9 ingest).
+  139 total in the epic's suites. GraphIngest reconstructs state from
+  IDB on service-worker restart. Additive mode: old paths still work.
+  Follow-up flagged: `tab_removed`, `session_started`/`session_ended`,
+  `tag_applied`/`tag_removed` transformers exist but aren't yet emitted
+  by the capture layer.
 
 ## Notes
 

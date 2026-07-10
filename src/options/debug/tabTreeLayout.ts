@@ -6,12 +6,17 @@
  * and canvas dimensions. Deliberately DOM-free so it can be unit-tested
  * with plain Jest — the React component is a thin renderer on top.
  *
- * Colors are assigned per domain via FNV-1a of the hostname, modulo an
- * 8-color muted palette. Same domain always draws the same color across
- * views, but colors are stable across page reloads too because the
- * hash is deterministic.
+ * The domain-color palette (`DOMAIN_PALETTE`, `colorForDomain`) lives in
+ * `../dashboard/domainColor.ts` so the dashboard's timeline / node-graph
+ * views share the exact same hue per domain as this tab-tree layout.
  */
 
+import {
+  DOMAIN_PALETTE,
+  colorForDomain,
+  hostnameOf,
+  type DomainColor,
+} from '../dashboard/domainColor';
 import type { TabTreeSession, TabTreeTab } from '../../database/graph/queries';
 
 // Column geometry. `COLUMN_WIDTH` includes the box AND the horizontal
@@ -25,51 +30,10 @@ export const CANVAS_PADDING = 16;
 export const ROW_GAP = 6;
 export const ARROW_STROKE_WIDTH = 1.5;
 
-// 8 muted category colors. The palette is intentionally not a rainbow —
-// each hue reads as a distinct domain but no color dominates the page.
-// Pairs of foreground / border tuned so 12–14px title text stays legible.
-export interface DomainColor {
-  fill: string;
-  border: string;
-  text: string;
-}
-
-// Palette: blue, teal, green, yellow, orange, pink, purple, grey.
-// Rationale: 8 distinct hues at similar chroma / lightness so no
-// single domain box screams louder than another in a dense session.
-export const DOMAIN_PALETTE: readonly DomainColor[] = [
-  { fill: '#dbe7f5', border: '#5b7fa3', text: '#1a2a3d' }, // blue
-  { fill: '#d3ebe6', border: '#4f8a80', text: '#173730' }, // teal
-  { fill: '#dbe9d1', border: '#6a8a55', text: '#2a361b' }, // green
-  { fill: '#f0e5c2', border: '#a08a3f', text: '#3d3311' }, // yellow
-  { fill: '#f2d9c1', border: '#a8703a', text: '#3d200f' }, // orange
-  { fill: '#efd5df', border: '#a35d78', text: '#3d1a26' }, // pink
-  { fill: '#e2d5ef', border: '#7b5aa3', text: '#25153d' }, // purple
-  { fill: '#dedede', border: '#6f6f6f', text: '#2b2b2b' }, // grey
-] as const;
-
-// FNV-1a 32-bit. Same input → same 32-bit index every time.
-function fnv1a(input: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
-  }
-  return h >>> 0;
-}
-
-export function colorForDomain(hostname: string): DomainColor {
-  const idx = fnv1a(hostname.toLowerCase()) % DOMAIN_PALETTE.length;
-  return DOMAIN_PALETTE[idx]!;
-}
-
-export function hostnameOf(url: string): string {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
+// Re-exports so callers importing from this module keep working after
+// the palette moved out. The tab-tree unit tests reach in via these.
+export { DOMAIN_PALETTE, colorForDomain, hostnameOf };
+export type { DomainColor };
 
 // ---- Layout output types ----
 

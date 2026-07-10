@@ -352,6 +352,222 @@ async function buildTabTreeForSession(
   return { session, tabs };
 }
 
+// ---- 7. Recent sessions (dashboard-only summary primitive) ----
+//
+// Returns up to `limit` sessions, newest `started_at` first, each with
+// the aggregated metadata the dashboard's Session Browser row needs.
+//
+// Session nodes carry `started_at` (not `at_time`), so they are absent
+// from the (type, at_time) index. This primitive scans `nodesOfType`
+// and sorts in memory. At personal scale (a few thousand sessions on a
+// heavy year) this is fine; no schema change was worth adding a second
+// temporal index for.
+export interface RecentSessionRow {
+  session: SessionNode;
+  visit_count: number;
+  page_count: number;
+  tags: TagNode[];
+  first_page_titles: string[];
+}
+
+export async function recentSessions(
+  g: GraphStore,
+  limit: number,
+): Promise<RecentSessionRow[]> {
+  if (limit <= 0) return [];
+
+  const all = await g.nodesOfType<SessionNode>('Session');
+  all.sort((a, b) => b.started_at - a.started_at);
+  const top = all.slice(0, limit);
+
+  const out: RecentSessionRow[] = [];
+  for (const session of top) {
+    const visitEdges = await g.inInterval(session.id, 'in_session');
+
+    const seenVisits = new Set<string>();
+    const visits: VisitNode[] = [];
+    for (const ve of visitEdges) {
+      if (seenVisits.has(ve.from_id)) continue;
+      const v = await g.getNode<VisitNode>(ve.from_id);
+      if (!v) continue;
+      seenVisits.add(v.id);
+      visits.push(v);
+    }
+    visits.sort((a, b) => a.at_time - b.at_time);
+
+    const pageIds = new Set<string>();
+    const firstThreeTitles: string[] = [];
+    for (const v of visits) {
+      const page = await pageForVisit(g, v);
+      if (!page) continue;
+      if (!pageIds.has(page.id)) {
+        pageIds.add(page.id);
+        if (firstThreeTitles.length < 3) {
+          const title = page.title.trim() !== '' ? page.title : page.normalized_url;
+          firstThreeTitles.push(title);
+        }
+      }
+    }
+
+    const tags: TagNode[] = [];
+    for (const te of await g.outPoint(session.id, 'tagged_with')) {
+      const tag = await g.getNode<TagNode>(te.to_id);
+      if (tag) tags.push(tag);
+    }
+
+    out.push({
+      session,
+      visit_count: visits.length,
+      page_count: pageIds.size,
+      tags,
+      first_page_titles: firstThreeTitles,
+    });
+  }
+
+  return out;
+}
+
+// ---- 8. Every Visit in a Session (dashboard timeline scoped mode) ----
+//
+// Returns the Visits that have an `in_session` edge pointing at
+// `sessionId`, together with each Visit's Page and its owning Tab.
+// A Visit that spans a session boundary (e.g. v5 in the fixture)
+// generates one edge per session; this primitive filters by session
+// id so straddling visits appear only where they belong.
+export interface VisitInSessionRow {
+  visit: VisitNode;
+  page: PageNode | null;
+  tab: TabNode | null;
+}
+
+export async function visitsInSession(
+  g: GraphStore,
+  sessionId: string,
+): Promise<VisitInSessionRow[]> {
+  const session = await g.getNode<SessionNode>(sessionId);
+  if (!session || session.type !== 'Session') return [];
+
+  const visits: VisitNode[] = [];
+  const seen = new Set<string>();
+  for (const ve of await g.inInterval(session.id, 'in_session')) {
+    if (seen.has(ve.from_id)) continue;
+    const v = await g.getNode<VisitNode>(ve.from_id);
+    if (!v) continue;
+    seen.add(v.id);
+    visits.push(v);
+  }
+  visits.sort((a, b) => a.at_time - b.at_time);
+
+  const out: VisitInSessionRow[] = [];
+  for (const v of visits) {
+    const page = await pageForVisit(g, v);
+    const tabEdge = (await g.outInterval(v.id, 'in_tab'))[0];
+    const tab = tabEdge ? (await g.getNode<TabNode>(tabEdge.to_id)) ?? null : null;
+    out.push({ visit: v, page, tab });
+  }
+  return out;
+}
+
+// ---- 9. Pages matching a text query (dashboard Page Search) ----
+//
+// Case-insensitive substring match against Page.title,
+// Page.normalized_url, and Page.raw_url_first_seen. Full linear scan;
+// at personal scale (thousands of pages) this stays under a millisecond.
+// Empty / whitespace-only query returns an empty array — a "match
+// everything" mode would flood the UI without user intent.
+export async function pagesMatching(
+  g: GraphStore,
+  query: string,
+): Promise<PageNode[]> {
+  const needle = query.trim().toLowerCase();
+  if (needle === '') return [];
+
+  const all = await g.nodesOfType<PageNode>('Page');
+  const hits: PageNode[] = [];
+  for (const p of all) {
+    if (
+      p.title.toLowerCase().includes(needle) ||
+      p.normalized_url.toLowerCase().includes(needle) ||
+      p.raw_url_first_seen.toLowerCase().includes(needle)
+    ) {
+      hits.push(p);
+    }
+  }
+  hits.sort((a, b) => b.last_seen - a.last_seen);
+  return hits;
+}
+
+// ---- 10. Pages + inter-Page transitions on-screen in a window ----
+//
+// Walks every Visit whose interval overlaps `[tFrom, tTo]`, collects
+// the distinct Pages they landed on, and reduces the Visit-level
+// `navigated_from` / `opened_from` point edges to Page-level directed
+// transitions with a count. The node-graph view uses this — Visit-
+// level edges would fan out too far and rendering 500 visits of the
+// same Page as 500 nodes buries structure.
+export interface PageTransition {
+  from_page_id: string;
+  to_page_id: string;
+  kind: 'navigated_from' | 'opened_from';
+  count: number;
+}
+
+export interface PagesAndTransitionsResult {
+  pages: PageNode[];
+  transitions: PageTransition[];
+}
+
+export async function pagesAndTransitionsBetween(
+  g: GraphStore,
+  tFrom: number,
+  tTo: number,
+): Promise<PagesAndTransitionsResult> {
+  const visitRows = await visitsOnScreenBetween(g, tFrom, tTo);
+
+  const pagesById = new Map<string, PageNode>();
+  const visitToPageId = new Map<string, string>();
+  for (const row of visitRows) {
+    if (row.page) {
+      pagesById.set(row.page.id, row.page);
+      visitToPageId.set(row.visit.id, row.page.id);
+    }
+  }
+
+  const transitionKey = (from: string, to: string, kind: string) =>
+    `${kind}::${from}->${to}`;
+  const transitions = new Map<string, PageTransition>();
+
+  for (const row of visitRows) {
+    const toPageId = visitToPageId.get(row.visit.id);
+    if (!toPageId) continue;
+
+    for (const kind of ['navigated_from', 'opened_from'] as const) {
+      for (const edge of await g.outPoint(row.visit.id, kind)) {
+        const fromPageId = visitToPageId.get(edge.to_id);
+        if (!fromPageId) continue;
+        if (fromPageId === toPageId) continue;
+        const key = transitionKey(fromPageId, toPageId, kind);
+        const existing = transitions.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          transitions.set(key, {
+            from_page_id: fromPageId,
+            to_page_id: toPageId,
+            kind,
+            count: 1,
+          });
+        }
+      }
+    }
+  }
+
+  const pages = Array.from(pagesById.values()).sort(
+    (a, b) => a.first_seen - b.first_seen,
+  );
+  return { pages, transitions: Array.from(transitions.values()) };
+}
+
 // ---- Internal helpers ----
 
 async function pageForVisit(g: GraphStore, v: VisitNode): Promise<PageNode | null> {

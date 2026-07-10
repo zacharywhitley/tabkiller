@@ -35,10 +35,14 @@ import {
 import { GraphStore } from '../store';
 import {
   causalPredecessors,
+  pagesAndTransitionsBetween,
+  pagesMatching,
   pagesOpenedFromDomain,
+  recentSessions,
   tabTreeForSession,
   tabTreeForTag,
   visitFocusedAt,
+  visitsInSession,
   visitsInTagPredatingTag,
   visitsOnScreenBetween,
 } from '../queries';
@@ -391,5 +395,198 @@ describe('tabTreeForSession', () => {
     const { store } = await freshLoadedStore();
     const result = await tabTreeForSession(store, 'no-such-session');
     expect(result).toEqual([]);
+  });
+});
+
+// ---- 7. recentSessions (dashboard-only) ----
+
+describe('recentSessions', () => {
+  it('returns sessions newest first with per-session aggregates', async () => {
+    const { store } = await freshLoadedStore();
+
+    const rows = await recentSessions(store, 10);
+
+    expect(rows.map((r) => r.session.id)).toEqual(['s2', 's1']);
+
+    const s2 = rows[0]!;
+    expect(s2.session.started_at).toBe(T.s2_start);
+    expect(s2.visit_count).toBe(2);
+    expect(s2.page_count).toBe(2);
+    expect(s2.first_page_titles).toEqual([
+      'React – The library for web UIs',
+      'Built-in React Hooks',
+    ]);
+    expect(s2.tags.map((t) => t.slug)).toEqual(['react-research']);
+
+    const s1 = rows[1]!;
+    expect(s1.visit_count).toBe(5);
+    expect(s1.page_count).toBe(5);
+    expect(s1.first_page_titles).toHaveLength(3);
+    expect(s1.first_page_titles[0]).toBe('Hacker News');
+    expect(s1.tags.map((t) => t.slug)).toEqual(['wasted-time']);
+  });
+
+  it('respects the limit — only N sessions come back even if more exist', async () => {
+    const { store } = await freshLoadedStore();
+    const rows = await recentSessions(store, 1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.session.id).toBe('s2');
+  });
+
+  it('returns an empty array when limit is zero or negative', async () => {
+    const { store } = await freshLoadedStore();
+    expect(await recentSessions(store, 0)).toEqual([]);
+    expect(await recentSessions(store, -5)).toEqual([]);
+  });
+});
+
+// ---- 8. visitsInSession (dashboard timeline scoped mode) ----
+
+describe('visitsInSession', () => {
+  it('returns the five visits in s1 with page + tab attached, ordered by at_time', async () => {
+    const { store } = await freshLoadedStore();
+
+    const rows = await visitsInSession(store, 's1');
+
+    expect(rows.map((r) => r.visit.id)).toEqual(['v1', 'v2', 'v3', 'v4', 'v5']);
+
+    // Every row must resolve its Page (fixture guarantees this).
+    for (const row of rows) {
+      expect(row.page).not.toBeNull();
+      expect(row.tab).not.toBeNull();
+    }
+
+    // v3 lives in the spawned tab t2; the other four in t1.
+    const v3Row = rows.find((r) => r.visit.id === 'v3')!;
+    expect(v3Row.tab!.id).toBe('t2');
+    const v1Row = rows.find((r) => r.visit.id === 'v1')!;
+    expect(v1Row.tab!.id).toBe('t1');
+  });
+
+  it("returns v5 and v6 for s2 — v5 straddles s1 and s2 and appears in each", async () => {
+    const { store } = await freshLoadedStore();
+
+    const rows = await visitsInSession(store, 's2');
+
+    // v5 has an in_session edge to both s1 and s2 (fixture splits at
+    // the idle boundary). The primitive filters by session id so v5
+    // shows up here too, ordered before v6 which starts later.
+    expect(rows.map((r) => r.visit.id)).toEqual(['v5', 'v6']);
+  });
+
+  it('returns an empty array when the session id does not exist', async () => {
+    const { store } = await freshLoadedStore();
+    expect(await visitsInSession(store, 'no-such-session')).toEqual([]);
+  });
+});
+
+// ---- 9. pagesMatching (dashboard Page Search) ----
+
+describe('pagesMatching', () => {
+  it('matches Page.title and Page.normalized_url case-insensitively', async () => {
+    const { store } = await freshLoadedStore();
+
+    const ghHits = await pagesMatching(store, 'github');
+    expect(ghHits.map((p) => p.id).sort()).toEqual(['p_gh1', 'p_gh2']);
+
+    // 'react' as a needle also matches Google's search-results URL
+    // (`?q=react+hooks+tutorial`), which is intentional — Page Search
+    // should surface search-result pages that contain the needle.
+    const reactHits = await pagesMatching(store, 'React');
+    expect(reactHits.map((p) => p.id).sort()).toEqual([
+      'p_goo_search', 'p_react', 'p_react_hooks',
+    ]);
+  });
+
+  it("matches on the page title even when the URL doesn't contain the needle", async () => {
+    const { store } = await freshLoadedStore();
+    const hits = await pagesMatching(store, 'Hacker');
+    expect(hits.map((p) => p.id)).toEqual(['p_hn']);
+  });
+
+  it('returns empty for an empty or whitespace-only query — explicit intent required', async () => {
+    const { store } = await freshLoadedStore();
+    expect(await pagesMatching(store, '')).toEqual([]);
+    expect(await pagesMatching(store, '   ')).toEqual([]);
+  });
+
+  it('returns an empty array when nothing matches the needle', async () => {
+    const { store } = await freshLoadedStore();
+    expect(await pagesMatching(store, 'never-visited-anywhere')).toEqual([]);
+  });
+
+  it('orders hits by last_seen descending', async () => {
+    const { store } = await freshLoadedStore();
+    const hits = await pagesMatching(store, 'react');
+    for (let i = 1; i < hits.length; i++) {
+      expect(hits[i]!.last_seen).toBeLessThanOrEqual(hits[i - 1]!.last_seen);
+    }
+  });
+});
+
+// ---- 10. pagesAndTransitionsBetween (dashboard Node-Graph view) ----
+
+describe('pagesAndTransitionsBetween', () => {
+  it('returns the six fixture pages and reduces visit-level edges to page-level transitions', async () => {
+    const { store } = await freshLoadedStore();
+
+    const window = 24 * H;
+    const result = await pagesAndTransitionsBetween(store, 0, window);
+
+    const pageIds = result.pages.map((p) => p.id).sort();
+    expect(pageIds).toEqual([
+      'p_gh1', 'p_gh2', 'p_goo_search', 'p_hn', 'p_react', 'p_react_hooks',
+    ]);
+
+    // Expected transitions from the fixture:
+    //   navigated_from:  v2->v1 (p_gh1 <- p_hn),
+    //                    v4->v2 (p_goo_search <- p_gh1),
+    //                    v5->v4 (p_react <- p_goo_search),
+    //                    v6->v5 (p_react_hooks <- p_react).
+    //   opened_from:     v3->v1 (p_gh2 <- p_hn).
+    // Reduced to page-level transitions (from, to, kind, count).
+    const asKey = (t: typeof result.transitions[number]) =>
+      `${t.kind}::${t.from_page_id}->${t.to_page_id}`;
+    const keys = result.transitions.map(asKey).sort();
+    expect(keys).toEqual(
+      [
+        'navigated_from::p_gh1->p_goo_search',
+        'navigated_from::p_goo_search->p_react',
+        'navigated_from::p_hn->p_gh1',
+        'navigated_from::p_react->p_react_hooks',
+        'opened_from::p_hn->p_gh2',
+      ].sort(),
+    );
+
+    for (const t of result.transitions) {
+      expect(t.count).toBe(1);
+    }
+  });
+
+  it('filters transitions to those whose source page also lies inside the window', async () => {
+    const { store } = await freshLoadedStore();
+
+    // Narrow window that covers v4..v6 but excludes v1/v2/v3.
+    // v4's navigated_from points at v2 (outside window) — should be dropped.
+    // v5->v4 and v6->v5 stay because both endpoints are in-window.
+    const tFrom = T.v4_start;
+    const tTo = T.v6_start + 1000;
+
+    const result = await pagesAndTransitionsBetween(store, tFrom, tTo);
+
+    const keys = result.transitions
+      .map((t) => `${t.kind}::${t.from_page_id}->${t.to_page_id}`)
+      .sort();
+    expect(keys).toEqual([
+      'navigated_from::p_goo_search->p_react',
+      'navigated_from::p_react->p_react_hooks',
+    ]);
+  });
+
+  it('returns empty result for a window before any visit', async () => {
+    const { store } = await freshLoadedStore();
+    const result = await pagesAndTransitionsBetween(store, 0, 3 * H);
+    expect(result.pages).toEqual([]);
+    expect(result.transitions).toEqual([]);
   });
 });

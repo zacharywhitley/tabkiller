@@ -13,7 +13,9 @@
     "identity",
     "contextMenus",
     "sessions",
-    "scripting"
+    "scripting",
+    "webNavigation",
+    "alarms"
   ],
   "host_permissions": [
     "http://*/*",

@@ -257,15 +257,9 @@ afterEach(() => {
   }
 };
 
-// Setup jsdom environment  
-delete (window as any).location;
-(window as any).location = {
-  href: 'https://example.com',
-  origin: 'https://example.com',
-  pathname: '/',
-  search: '',
-  hash: ''
-};
+// jsdom URL is set via jest.config.js `testEnvironmentOptions.url`.
+// Do not assign to window.location here — jsdom 26 makes the slot
+// non-configurable, and assigning to `.href` triggers real navigation.
 
 // Mock IntersectionObserver
 global.IntersectionObserver = jest.fn().mockImplementation(() => ({

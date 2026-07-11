@@ -13,7 +13,6 @@ import {
   EventMetadata
 } from '../../shared/types';
 
-import { EventTracker } from '../../tracking/EventTracker';
 import { getBrowserAPI } from '../../utils/cross-browser';
 
 // =============================================================================

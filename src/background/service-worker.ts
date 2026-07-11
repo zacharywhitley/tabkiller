@@ -3,9 +3,18 @@
  * Handles tab tracking, session management, and cross-browser compatibility
  */
 
-import { 
-  getBrowserAPI, 
-  detectBrowser, 
+// Surface any error that escapes handlers below so it isn't lost in the
+// service worker's short lifetime.
+self.addEventListener('error', (ev) => {
+  console.error('service-worker: uncaught error:', ev.message, ev.error);
+});
+self.addEventListener('unhandledrejection', (ev) => {
+  console.error('service-worker: unhandled rejection:', ev.reason);
+});
+
+import {
+  getBrowserAPI,
+  detectBrowser,
   isManifestV3,
   tabs as tabsAPI,
   storage,
@@ -14,6 +23,7 @@ import {
 } from '../utils/cross-browser';
 import {
   BrowsingSession,
+  BrowsingEvent,
   TabInfo,
   NavigationEvent,
   Message,
@@ -22,14 +32,73 @@ import {
   ExtensionSettings,
   TabEvent,
   WindowEvent,
-  TabKillerError
+  TabKillerError,
+  TrackingConfig
 } from '../shared/types';
-import { initializeDatabaseIntegration, getDatabaseIntegration } from '../database/integration';
+import { LocalEventStore } from '../storage/LocalEventStore';
+import { FocusEmitter, FocusTransition } from '../session/tracking/FocusEmitter';
+import { SessionEmitter } from '../session/tracking/SessionEmitter';
+import { GraphStore } from '../database/graph/store';
+import { GraphIngest, GRAPH_INGEST_ALARM_NAME } from '../database/graph/ingest';
+import { SessionStorageEngine } from '../session/storage/SessionStorageEngine';
+
+function generateEventId(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// LocalEventStore only reads `batchSize` from TrackingConfig at write time.
+// The other fields exist for the older tracking layer; we supply defaults so
+// the type is satisfied without pretending we use them.
+const OUTBOX_TRACKING_CONFIG: TrackingConfig = {
+  enableTabTracking: true,
+  enableWindowTracking: true,
+  enableNavigationTracking: true,
+  enableSessionTracking: true,
+  enableFormTracking: false,
+  enableScrollTracking: false,
+  enableClickTracking: false,
+  privacyMode: 'moderate',
+  excludeIncognito: false,
+  excludeDomains: [],
+  includeDomains: [],
+  sensitiveFieldFilters: [],
+  batchSize: 100,
+  batchInterval: 30000,
+  maxEventsInMemory: 1000,
+  storageCleanupInterval: 3600000,
+  idleThreshold: 300000,
+  sessionGapThreshold: 900000,
+  domainChangeSessionBoundary: false,
+  enableProductivityMetrics: false,
+  deepWorkThreshold: 0,
+  distractionThreshold: 0
+};
 
 class BackgroundService {
   private state: BackgroundState;
   private browser = getBrowserAPI();
   private currentBrowser = detectBrowser();
+
+  // Outbox: write-ahead log of capture events. The graph ingest pipeline
+  // (see graphIngest below) drains these into the graph store; here we
+  // only append and kick a debounced drain.
+  private outbox: LocalEventStore;
+
+  // Most recent committed navigation event id per browser tab. Used to
+  // resolve durable Visit ids for opener chains and focus transitions.
+  private latestVisitByTab: Map<number, string> = new Map();
+
+  private focusEmitter: FocusEmitter;
+
+  // Session emission. Owned by the SW so `session_started` /
+  // `session_ended` land in the outbox alongside the other capture
+  // events — the graph transformer already has fanouts for both.
+  private sessionEmitter: SessionEmitter;
+
+  // Graph ingest pipeline. Lazily wired in initialize() because it needs
+  // a live IndexedDB connection from SessionStorageEngine.
+  private sessionStorageEngine: SessionStorageEngine;
+  private graphIngest?: GraphIngest;
 
   constructor() {
     this.state = {
@@ -43,6 +112,16 @@ class BackgroundService {
         totalSynced: 0
       }
     };
+
+    this.outbox = new LocalEventStore(OUTBOX_TRACKING_CONFIG);
+    this.sessionStorageEngine = new SessionStorageEngine();
+    this.focusEmitter = new FocusEmitter({
+      resolveVisitForTab: (tabId) => this.latestVisitByTab.get(tabId) ?? null
+    });
+    this.sessionEmitter = new SessionEmitter({
+      outbox: this.outbox,
+      onEmit: () => this.graphIngest?.drainSoon()
+    });
   }
 
   /**
@@ -51,26 +130,39 @@ class BackgroundService {
   async initialize(): Promise<void> {
     try {
       console.log(`TabKiller initializing on ${this.currentBrowser}...`);
-      
+
       // Load settings and state
       await this.loadSettings();
       await this.loadState();
 
-      // Initialize database integration
+      // Bring the outbox online before any capture handlers fire.
+      await this.outbox.initialize();
+
+      // Open the fresh session BEFORE anything else can push events into
+      // the outbox. `session_started` must precede the first
+      // `navigation_committed` so the graph transformer emits `in_session`
+      // edges for every visit captured this session.
+      await this.sessionEmitter.start('session_restore');
+
+      // Bring the graph ingest pipeline online: open the shared IndexedDB
+      // via SessionStorageEngine, hand its connection to a GraphStore,
+      // and hand that to the ingest. Failures here degrade to "old paths
+      // only" — the outbox keeps accumulating and can drain on next boot.
       try {
-        await initializeDatabaseIntegration(this.state.settings);
-        console.log('Database integration initialized');
+        await this.sessionStorageEngine.initialize();
+        const graph = new GraphStore(this.sessionStorageEngine.getDatabase());
+        this.graphIngest = new GraphIngest({ outbox: this.outbox, graph });
+        await this.graphIngest.initialize();
       } catch (error) {
-        console.warn('Database integration failed:', error);
-        // Continue without database if it fails
+        console.warn('Graph ingest initialization failed:', error);
       }
-      
+
       // Set up event listeners
       this.setupEventListeners();
-      
+
       // Initialize current tabs
       await this.initializeCurrentTabs();
-      
+
       console.log('TabKiller background service initialized successfully');
     } catch (error) {
       console.error('Failed to initialize TabKiller background service:', error);
@@ -103,12 +195,52 @@ class BackgroundService {
       history.onVisited.addListener(this.handleHistoryVisited.bind(this));
     }
 
+    // webNavigation events (source of ground-truth transitionType).
+    // Filter to http/https so chrome:// and about: navigations don't spam the
+    // outbox. addListener throws if the API is unavailable (e.g. Safari
+    // without the permission granted) — degrade to a warning.
+    if (this.browser.webNavigation && this.browser.webNavigation.onCommitted) {
+      try {
+        this.browser.webNavigation.onCommitted.addListener(
+          this.handleWebNavigationCommitted.bind(this),
+          { url: [{ schemes: ['http', 'https'] }] }
+        );
+      } catch (error) {
+        console.warn('webNavigation.onCommitted registration failed:', error);
+      }
+    } else {
+      console.warn('webNavigation API unavailable; transitionType capture disabled');
+    }
+
+    // Focus transitions unified from tabs.onActivated + windows.onFocusChanged.
+    this.focusEmitter.onFocusTransition(this.handleFocusTransition.bind(this));
+    this.focusEmitter.start();
+
     // Message passing
     messaging.onMessage.addListener(this.handleMessage.bind(this));
 
     // Extension lifecycle events
     this.browser.runtime.onStartup.addListener(this.handleStartup.bind(this));
     this.browser.runtime.onInstalled.addListener(this.handleInstalled.bind(this));
+
+    // Graph-ingest alarm. Fires every 30s so drain runs even when hot
+    // writes are absent (e.g. the SW slept, then woke up with a stale
+    // outbox). The alarms API is optional in some environments — degrade
+    // to drainSoon-only if the API is unavailable.
+    if (this.browser.alarms) {
+      try {
+        this.browser.alarms.create(GRAPH_INGEST_ALARM_NAME, { periodInMinutes: 0.5 });
+        this.browser.alarms.onAlarm.addListener((alarm) => {
+          if (alarm.name === GRAPH_INGEST_ALARM_NAME) {
+            void this.graphIngest?.runAlarm();
+          }
+        });
+      } catch (error) {
+        console.warn('graph-ingest alarm registration failed:', error);
+      }
+    } else {
+      console.warn('chrome.alarms unavailable; graph ingest will only run on drainSoon()');
+    }
 
     // Context menu (if supported)
     if (this.browser.contextMenus) {
@@ -134,7 +266,33 @@ class BackgroundService {
       };
 
       this.state.activeTabs.set(tab.id!, tabInfo);
-      
+
+      // Resolve opener → parent visit id. If the opener has no committed
+      // navigation yet, emit without an opener; do not block.
+      const openerTabId = tab.openerTabId;
+      const openerVisitId = openerTabId !== undefined
+        ? this.latestVisitByTab.get(openerTabId) ?? null
+        : null;
+
+      const outboxEvent: BrowsingEvent = {
+        id: generateEventId('tabc'),
+        timestamp: Date.now(),
+        type: 'tab_created',
+        tabId: tab.id!,
+        windowId: tab.windowId,
+        url: tab.url || undefined,
+        title: tab.title || undefined,
+        sessionId: '',
+        metadata: {
+          openerTabId,
+          openerVisitId: openerVisitId ?? undefined,
+          incognito: tab.incognito ?? false
+        }
+      };
+      await this.sessionEmitter.noteActivity(outboxEvent.timestamp);
+      await this.outbox.storeEvent(outboxEvent);
+      this.graphIngest?.drainSoon();
+
       const event: TabEvent = {
         type: 'created',
         tabId: tab.id!,
@@ -144,17 +302,97 @@ class BackgroundService {
       };
 
       await this.processTabEvent(event);
-
-      // Store in graph database
-      try {
-        const dbIntegration = getDatabaseIntegration();
-        await dbIntegration.handleTabCreated(tabInfo);
-      } catch (error) {
-        console.warn('Failed to store tab in database:', error);
-      }
     } catch (error) {
       console.error('Error handling tab created:', error);
     }
+  }
+
+  /**
+   * Handle webNavigation.onCommitted. This is the ground-truth source of
+   * `transitionType` — tabs.onUpdated does not surface it. The event id
+   * becomes the durable Visit id used by the focus emitter and opener
+   * chain resolution.
+   */
+  private async handleWebNavigationCommitted(
+    details: chrome.webNavigation.WebNavigationTransitionCallbackDetails
+  ): Promise<void> {
+    // Ignore sub-frame navigations; they are not user-visible visits.
+    if (details.frameId !== 0) return;
+
+    // Read the tab's current title at commit time. It is often stale or
+    // empty for SPAs because the DOM hasn't resolved yet — the follow-up
+    // `tabs.onUpdated{title}` event handles late arrivals — but for
+    // static pages the title is already present here and we want it on
+    // the Page node from the first write.
+    let commitTitle: string | undefined;
+    try {
+      const tab = await this.browser.tabs.get(details.tabId);
+      if (tab && typeof tab.title === 'string' && tab.title.length > 0) {
+        commitTitle = tab.title;
+      }
+    } catch {
+      // Tab may already be closed or unavailable — proceed without a title.
+    }
+
+    const eventId = generateEventId('visit');
+    const event: BrowsingEvent = {
+      id: eventId,
+      timestamp: details.timeStamp,
+      type: 'navigation_committed',
+      tabId: details.tabId,
+      url: details.url,
+      title: commitTitle,
+      sessionId: '',
+      metadata: {
+        transitionType: details.transitionType as any,
+        transitionQualifiers: details.transitionQualifiers,
+        frameId: details.frameId
+      }
+    };
+
+    try {
+      await this.sessionEmitter.noteActivity(event.timestamp);
+      await this.outbox.storeEvent(event);
+    } catch (error) {
+      console.warn('Failed to append webNavigation event to outbox:', error);
+      return;
+    }
+    this.graphIngest?.drainSoon();
+
+    // Update the tab → visit index; this is what the focus emitter and
+    // opener-chain resolver read from.
+    this.latestVisitByTab.set(details.tabId, eventId);
+
+    // If this tab is currently focused, re-emit a focus transition so the
+    // focus interval closes on the old visit and opens on the new one.
+    await this.focusEmitter.notifyVisitChange(details.tabId, eventId);
+  }
+
+  /**
+   * Forward normalized focus transitions from the FocusEmitter into the
+   * outbox. T4 ingests these into `focus_intervals` on the current Visit.
+   */
+  private async handleFocusTransition(transition: FocusTransition): Promise<void> {
+    const event: BrowsingEvent = {
+      id: generateEventId('focus'),
+      timestamp: transition.at,
+      type: 'focus_transition',
+      tabId: transition.focused_tab_id ?? undefined,
+      sessionId: '',
+      metadata: {
+        focused_visit: transition.focused_visit,
+        browserTabId: transition.focused_tab_id
+      }
+    };
+
+    try {
+      await this.sessionEmitter.noteActivity(event.timestamp);
+      await this.outbox.storeEvent(event);
+    } catch (error) {
+      console.warn('Failed to append focus transition to outbox:', error);
+      return;
+    }
+    this.graphIngest?.drainSoon();
   }
 
   /**
@@ -167,7 +405,7 @@ class BackgroundService {
   ): Promise<void> {
     try {
       const existingTab = this.state.activeTabs.get(tabId);
-      
+
       if (!existingTab) {
         // Tab wasn't tracked yet, create it
         await this.handleTabCreated(tab);
@@ -185,6 +423,40 @@ class BackgroundService {
 
       this.state.activeTabs.set(tabId, updatedTab);
 
+      // Late-title propagation: SPAs frequently commit navigation with an
+      // empty/stale <title> then set the real one after the DOM resolves.
+      // Emit a `tab_updated` outbox event carrying the new title + the
+      // tab's current URL so the transformer can rewrite the Page node
+      // in place. The title check is against what the DOM now reports,
+      // not against changeInfo.title alone — that field is only set on
+      // the specific update, and we still want to catch a stale-title
+      // Page node when the update carries only a URL.
+      const nextTitle = changeInfo.title ?? tab.title;
+      const nextUrl = changeInfo.url ?? tab.url;
+      if (
+        nextTitle &&
+        nextUrl &&
+        nextTitle !== existingTab.title
+      ) {
+        const titleEvent: BrowsingEvent = {
+          id: generateEventId('tabu'),
+          timestamp: Date.now(),
+          type: 'tab_updated',
+          tabId,
+          windowId: tab.windowId,
+          url: nextUrl,
+          title: nextTitle,
+          sessionId: '',
+          metadata: {}
+        };
+        try {
+          await this.outbox.storeEvent(titleEvent);
+          this.graphIngest?.drainSoon();
+        } catch (error) {
+          console.warn('Failed to append tab_updated title event to outbox:', error);
+        }
+      }
+
       // Track navigation if URL changed
       if (changeInfo.url) {
         const navigationEvent: NavigationEvent = {
@@ -196,14 +468,6 @@ class BackgroundService {
         };
 
         await this.trackNavigation(navigationEvent);
-
-        // Store navigation in graph database
-        try {
-          const dbIntegration = getDatabaseIntegration();
-          await dbIntegration.handleNavigation(navigationEvent);
-        } catch (error) {
-          console.warn('Failed to store navigation in database:', error);
-        }
       }
 
       const event: TabEvent = {
@@ -226,17 +490,22 @@ class BackgroundService {
   private async handleTabRemoved(tabId: number, removeInfo: chrome.tabs.TabRemoveInfo): Promise<void> {
     try {
       const tabInfo = this.state.activeTabs.get(tabId);
-      
+
       if (tabInfo) {
         // Calculate final time spent
         tabInfo.timeSpent += Date.now() - tabInfo.lastAccessed;
-        
+
         // Save tab data before removal
         await this.saveTabData(tabInfo);
-        
+
         // Remove from active tabs
         this.state.activeTabs.delete(tabId);
       }
+
+      // Drop the visit index entry — the tab is gone; keeping it would leak
+      // memory and could resurrect a stale visit id if the browser reuses
+      // the tab id.
+      this.latestVisitByTab.delete(tabId);
 
       const event: TabEvent = {
         type: 'removed',
@@ -357,23 +626,18 @@ class BackgroundService {
         case 'ping':
           return { success: true, data: 'pong' };
 
-        case 'get-dashboard-data':
-          const dashboardData = await this.getDashboardData();
-          return { success: true, data: dashboardData };
+        case 'apply-tag':
+          return { success: true, data: await this.applyTagFromMessage(message.payload) };
 
-        case 'search-history':
-          const searchTerm = message.payload as string;
-          const searchResults = await this.searchHistory(searchTerm);
-          return { success: true, data: searchResults };
+        case 'remove-tag':
+          return { success: true, data: await this.removeTagFromMessage(message.payload) };
 
-        case 'get-browsing-patterns':
-          const patterns = await this.getBrowsingPatterns();
-          return { success: true, data: patterns };
+        case 'get-current-session-id':
+          return {
+            success: true,
+            data: this.currentSessionNodeId()
+          };
 
-        case 'get-database-status':
-          const dbStatus = await this.getDatabaseStatus();
-          return { success: true, data: dbStatus };
-          
         default:
           throw new TabKillerError(
             'UNKNOWN_MESSAGE',
@@ -445,19 +709,94 @@ class BackgroundService {
     this.state.currentSession = session;
     await this.saveSession(session);
 
-    // Store session in graph database
-    try {
-      const dbIntegration = getDatabaseIntegration();
-      await dbIntegration.createSession(session);
-    } catch (error) {
-      console.warn('Failed to store session in database:', error);
-    }
-    
     return session;
   }
 
   private async captureCurrentTabs(): Promise<TabInfo[]> {
     return Array.from(this.state.activeTabs.values());
+  }
+
+  /**
+   * The session_node id (`session_<eventId>`) for the currently open
+   * session. Exposed so the debug-tag form can target the running
+   * session without the developer looking it up by hand.
+   */
+  private currentSessionNodeId(): string | null {
+    const eventId = this.sessionEmitter.currentSessionEventId();
+    return eventId ? `session_${eventId}` : null;
+  }
+
+  /**
+   * Append a `tag_applied` outbox event. Used by the developer debug
+   * form: caller supplies a `slug`, optional `label`, and either an
+   * explicit `sessionNodeId` (from the debug UI where the developer
+   * picked one out of the graph) or falls through to the currently
+   * open session. Fails fast when neither is available so the debug
+   * form surfaces the misuse.
+   */
+  private async applyTagFromMessage(payload: unknown): Promise<{ eventId: string; sessionNodeId: string; slug: string }> {
+    const p = (payload ?? {}) as { slug?: string; label?: string; sessionNodeId?: string };
+    const slug = typeof p.slug === 'string' ? p.slug.trim() : '';
+    if (!slug) throw new TabKillerError('BAD_REQUEST', 'apply-tag: slug is required', 'background');
+
+    const sessionNodeId = p.sessionNodeId?.trim() || this.currentSessionNodeId();
+    if (!sessionNodeId) {
+      throw new TabKillerError(
+        'BAD_REQUEST',
+        'apply-tag: no sessionNodeId supplied and no session is currently open',
+        'background'
+      );
+    }
+
+    const eventId = generateEventId('tagapp');
+    const event: BrowsingEvent = {
+      id: eventId,
+      timestamp: Date.now(),
+      type: 'tag_applied',
+      sessionId: '',
+      metadata: {
+        slug,
+        label: p.label,
+        sessionNodeId
+      }
+    };
+    await this.outbox.storeEvent(event);
+    this.graphIngest?.drainSoon();
+    return { eventId, sessionNodeId, slug };
+  }
+
+  /**
+   * Append a `tag_removed` outbox event. Same target-resolution logic
+   * as `applyTagFromMessage`.
+   */
+  private async removeTagFromMessage(payload: unknown): Promise<{ eventId: string; sessionNodeId: string; slug: string }> {
+    const p = (payload ?? {}) as { slug?: string; sessionNodeId?: string };
+    const slug = typeof p.slug === 'string' ? p.slug.trim() : '';
+    if (!slug) throw new TabKillerError('BAD_REQUEST', 'remove-tag: slug is required', 'background');
+
+    const sessionNodeId = p.sessionNodeId?.trim() || this.currentSessionNodeId();
+    if (!sessionNodeId) {
+      throw new TabKillerError(
+        'BAD_REQUEST',
+        'remove-tag: no sessionNodeId supplied and no session is currently open',
+        'background'
+      );
+    }
+
+    const eventId = generateEventId('tagrem');
+    const event: BrowsingEvent = {
+      id: eventId,
+      timestamp: Date.now(),
+      type: 'tag_removed',
+      sessionId: '',
+      metadata: {
+        slug,
+        sessionNodeId
+      }
+    };
+    await this.outbox.storeEvent(event);
+    this.graphIngest?.drainSoon();
+    return { eventId, sessionNodeId, slug };
   }
 
   /**
@@ -580,79 +919,13 @@ class BackgroundService {
     // Migration logic for updates
     console.log('Performing update migration from:', previousVersion);
   }
-
-  /**
-   * Get dashboard data from graph database
-   */
-  private async getDashboardData(): Promise<any> {
-    try {
-      const dbIntegration = getDatabaseIntegration();
-      return await dbIntegration.getDashboardData();
-    } catch (error) {
-      console.warn('Failed to get dashboard data:', error);
-      return {
-        totalPages: 0,
-        totalSessions: 0,
-        totalTime: 0,
-        topDomains: [],
-        recentPages: [],
-        currentSession: null
-      };
-    }
-  }
-
-  /**
-   * Search browsing history
-   */
-  private async searchHistory(searchTerm: string): Promise<any> {
-    try {
-      const dbIntegration = getDatabaseIntegration();
-      return await dbIntegration.searchHistory(searchTerm);
-    } catch (error) {
-      console.warn('Failed to search history:', error);
-      return { pages: [], sessions: [] };
-    }
-  }
-
-  /**
-   * Get browsing patterns
-   */
-  private async getBrowsingPatterns(): Promise<any[]> {
-    try {
-      const dbIntegration = getDatabaseIntegration();
-      return await dbIntegration.getBrowsingPatterns();
-    } catch (error) {
-      console.warn('Failed to get browsing patterns:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get database status
-   */
-  private async getDatabaseStatus(): Promise<any> {
-    try {
-      const dbIntegration = getDatabaseIntegration();
-      return await dbIntegration.getHealthStatus();
-    } catch (error) {
-      console.warn('Failed to get database status:', error);
-      return {
-        initialized: false,
-        connected: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
 }
 
 // Initialize the background service
 const backgroundService = new BackgroundService();
 
-// Start initialization when the script loads
 if (isManifestV3()) {
-  // Manifest V3 - service worker
   backgroundService.initialize().catch(console.error);
 } else {
-  // Manifest V2 - background script
   backgroundService.initialize().catch(console.error);
 }

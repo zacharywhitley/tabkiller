@@ -117,10 +117,7 @@ export type MessageType =
   | 'get-status'
   | 'ping'
   // Database operations
-  | 'get-dashboard-data'
   | 'search-history'
-  | 'get-browsing-patterns'
-  | 'get-database-status'
   // Content script specific
   | 'capture-page'
   | 'get-form-data'  
@@ -130,7 +127,11 @@ export type MessageType =
   | 'session-boundary'
   | 'analytics-update'
   | 'privacy-filter'
-  | 'track-interaction';
+  | 'track-interaction'
+  // Developer debug (temporal-browsing-graph)
+  | 'apply-tag'
+  | 'remove-tag'
+  | 'get-current-session-id';
 
 export interface MessageResponse<T = unknown> {
   success: boolean;
@@ -294,7 +295,10 @@ export type EventType =
   | 'session_started'
   | 'session_ended'
   | 'idle_start'
-  | 'idle_end';
+  | 'idle_end'
+  | 'focus_transition'
+  | 'tag_applied'
+  | 'tag_removed';
 
 export interface BrowsingEvent {
   id: string;

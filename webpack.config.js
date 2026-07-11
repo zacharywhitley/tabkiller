@@ -17,6 +17,8 @@ const config = {
     'content/content-script': './src/content/content-script.ts',
     'popup/popup': './src/ui/popup/index.tsx',
     'options/options': './src/ui/options/index.tsx',
+    'options/debug': './src/options/debug/standalone.tsx',
+    'options/dashboard': './src/options/dashboard/index.tsx',
     'history/history': './src/ui/history/index.tsx'
   },
   
@@ -113,6 +115,18 @@ const config = {
       filename: 'options/options.html',
       chunks: ['options/options']
     }),
+
+    new HtmlWebpackPlugin({
+      template: 'src/options/debug/standalone.html',
+      filename: 'options/debug.html',
+      chunks: ['options/debug']
+    }),
+
+    new HtmlWebpackPlugin({
+      template: 'src/options/dashboard/index.html',
+      filename: 'options/dashboard.html',
+      chunks: ['options/dashboard']
+    }),
     
     new HtmlWebpackPlugin({
       template: 'src/ui/history/history.html',
@@ -126,17 +140,24 @@ const config = {
   
   optimization: {
     minimize: isProduction,
+    // Service workers in MV3 cannot dynamically importScripts() extra chunk
+    // files at runtime the way pages can via <script> injection. Applying
+    // splitChunks to the service worker entry produces a bundle that
+    // references sibling files (vendors.js, shared.js, N.js) that Chrome
+    // silently fails to load, so the SW never starts and its console stays
+    // empty. Exclude the SW entry from splitting; page entries keep the
+    // benefit.
     splitChunks: {
-      chunks: 'all',
+      chunks(chunk) {
+        return chunk.name !== 'background/service-worker';
+      },
       cacheGroups: {
         vendor: {
           test: /[\\/]node_modules[\\/]/,
-          name: 'vendors',
-          chunks: 'all'
+          name: 'vendors'
         },
         shared: {
           name: 'shared',
-          chunks: 'all',
           minChunks: 2
         }
       }

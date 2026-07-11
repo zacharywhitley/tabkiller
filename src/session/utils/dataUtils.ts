@@ -75,35 +75,6 @@ export function extractRootDomain(hostname: string): string {
 }
 
 /**
- * Normalize URL for consistent storage
- */
-export function normalizeUrl(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    
-    // Remove fragment and common tracking parameters
-    urlObj.hash = '';
-    
-    const trackingParams = [
-      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-      'fbclid', 'gclid', '_ga', '_gl', 'mc_cid', 'mc_eid'
-    ];
-    
-    for (const param of trackingParams) {
-      urlObj.searchParams.delete(param);
-    }
-    
-    // Sort search parameters for consistency
-    const params = Array.from(urlObj.searchParams.entries()).sort();
-    urlObj.search = new URLSearchParams(params).toString();
-    
-    return urlObj.toString();
-  } catch {
-    return url; // Return original if parsing fails
-  }
-}
-
-/**
  * Check if URL is valid
  */
 export function isValidUrl(url: string): boolean {

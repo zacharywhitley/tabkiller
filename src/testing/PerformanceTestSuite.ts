@@ -5,7 +5,6 @@
 
 import { performanceMonitor, PerformanceMetrics, PerformanceIssue } from '../performance/PerformanceMonitor';
 import { memoryManager, MemoryManager } from '../performance/MemoryManager';
-import { OptimizedQueryEngine } from '../database/optimized-queries';
 import { detectBrowser, isManifestV3 } from '../utils/cross-browser';
 
 export interface PerformanceBenchmarks {
@@ -77,7 +76,6 @@ export interface TestRunReport {
 export class PerformanceTestRunner {
   private benchmarks: PerformanceBenchmarks;
   private testSuites: TestSuite[] = [];
-  private queryEngine?: OptimizedQueryEngine;
 
   constructor(benchmarks?: Partial<PerformanceBenchmarks>) {
     this.benchmarks = {

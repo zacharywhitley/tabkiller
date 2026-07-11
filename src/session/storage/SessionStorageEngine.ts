@@ -132,14 +132,21 @@ export class SessionStorageEngine {
 
     try {
       console.log('Initializing SessionStorageEngine...');
-      
+
       this.db = await this.openDatabase();
       await this.initializeMetadata();
-      await this.performMaintenanceTasks();
-      
+
+      // Maintenance tasks (cleanup, stats, integrity check) are best-effort
+      // and must not block startup — one of them was silently hanging on a
+      // never-settled Promise and preventing the SW's event listeners from
+      // ever being wired. Fire them off and continue.
+      this.performMaintenanceTasks().catch((err) => {
+        console.warn('SessionStorageEngine maintenance tasks failed:', err);
+      });
+
       this.isInitialized = true;
       console.log('SessionStorageEngine initialized successfully');
-      
+
     } catch (error) {
       console.error('Failed to initialize SessionStorageEngine:', error);
       throw error;
@@ -905,6 +912,18 @@ export class SessionStorageEngine {
     if (!this.isInitialized) {
       await this.initialize();
     }
+  }
+
+  /**
+   * Underlying IndexedDB handle. Exposed so components sharing the
+   * database (e.g. the temporal graph store) can drive their own
+   * transactions without opening a second connection.
+   */
+  getDatabase(): IDBDatabase {
+    if (!this.db) {
+      throw new Error('SessionStorageEngine.getDatabase() called before initialize()');
+    }
+    return this.db;
   }
 
   // =============================================================================

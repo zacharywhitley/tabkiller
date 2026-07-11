@@ -28,8 +28,8 @@ import { colorForDomain, hostnameOf } from './domainColor';
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000; // last 24h
 const CANVAS_PADDING = 40;
 const AXIS_HEIGHT = 24;
-const MIN_R = 6;
-const MAX_R = 22;
+const MIN_R = 5;
+const MAX_R = 11;
 
 interface Node {
   page: PageNode;
@@ -73,27 +73,13 @@ function pageLabelFor(rawUrl: string, title: string | null | undefined): string 
   return preferred.length > 44 ? preferred.slice(0, 41) + '…' : preferred;
 }
 
-function bucketDomains(pages: PageNode[]): Map<string, number> {
-  const domains = new Set<string>();
-  for (const p of pages) {
-    const url = p.raw_url_first_seen || p.normalized_url;
-    domains.add(hostnameOf(url));
-  }
-  const ordered = Array.from(domains).sort();
-  const laneByDomain = new Map<string, number>();
-  ordered.forEach((d, i) => laneByDomain.set(d, i));
-  return laneByDomain;
-}
-
 function computeLayout(
   data: PagesAndTransitionsResult,
   width: number,
   windowStart: number,
   windowEnd: number,
 ): Layout {
-  const laneByDomain = bucketDomains(data.pages);
-  const laneCount = Math.max(1, laneByDomain.size);
-  const laneHeight = 60;
+  const laneHeight = 26;
   const laneY0 = AXIS_HEIGHT + CANVAS_PADDING;
   const usableWidth = Math.max(200, width - 2 * CANVAS_PADDING);
   const range = Math.max(1, windowEnd - windowStart);
@@ -101,22 +87,36 @@ function computeLayout(
 
   const maxCount = data.pages.reduce((m, p) => Math.max(m, p.visit_count), 1);
 
-  const nodes: Node[] = data.pages
-    .filter((p) => p.first_seen >= windowStart && p.first_seen <= windowEnd)
-    .map((p) => {
-      const url = p.raw_url_first_seen || p.normalized_url;
-      const domain = hostnameOf(url);
-      const lane = laneByDomain.get(domain) ?? 0;
-      const r = MIN_R + (MAX_R - MIN_R) * Math.sqrt(p.visit_count / maxCount);
-      return {
-        page: p,
-        cx: timeToX(p.first_seen),
-        cy: laneY0 + lane * laneHeight + laneHeight / 2,
-        r,
-        color: colorForDomain(domain),
-        domain,
-      };
-    });
+  // Every Page gets its own vertical lane. Sort by domain (alphabetical) so
+  // same-domain pages cluster, then by first_seen within a domain so the
+  // sequence of arrivals reads top-to-bottom.
+  const visible = data.pages.filter(
+    (p) => p.first_seen >= windowStart && p.first_seen <= windowEnd,
+  );
+  visible.sort((a, b) => {
+    const da = hostnameOf(a.raw_url_first_seen || a.normalized_url);
+    const db = hostnameOf(b.raw_url_first_seen || b.normalized_url);
+    if (da !== db) return da < db ? -1 : 1;
+    return a.first_seen - b.first_seen;
+  });
+  const laneByPageId = new Map<string, number>();
+  visible.forEach((p, i) => laneByPageId.set(p.id, i));
+  const laneCount = Math.max(1, visible.length);
+
+  const nodes: Node[] = visible.map((p) => {
+    const url = p.raw_url_first_seen || p.normalized_url;
+    const domain = hostnameOf(url);
+    const lane = laneByPageId.get(p.id) ?? 0;
+    const r = MIN_R + (MAX_R - MIN_R) * Math.sqrt(p.visit_count / maxCount);
+    return {
+      page: p,
+      cx: timeToX(p.first_seen),
+      cy: laneY0 + lane * laneHeight + laneHeight / 2,
+      r,
+      color: colorForDomain(domain),
+      domain,
+    };
+  });
 
   const nodeById = new Map(nodes.map((n) => [n.page.id, n]));
   const edges: Edge[] = [];
@@ -136,9 +136,14 @@ function computeLayout(
     });
   }
 
+  // Lane labels: show the domain only at the y of its first page in the
+  // sort, so pages cluster visually without repeating the domain per row.
   const laneLabels: Layout['laneLabels'] = [];
-  for (const [domain, lane] of laneByDomain) {
-    laneLabels.push({ y: laneY0 + lane * laneHeight + laneHeight / 2, label: domain });
+  let lastDomain: string | null = null;
+  for (const n of nodes) {
+    if (n.domain === lastDomain) continue;
+    laneLabels.push({ y: n.cy, label: n.domain });
+    lastDomain = n.domain;
   }
 
   const ticks: Layout['ticks'] = [];

@@ -33,6 +33,7 @@ import type {
   TabNode,
   TagNode,
   VisitNode,
+  WindowNode,
 } from './types';
 
 // ---- 1. Pages I opened from <hostname> in a time window ----
@@ -617,4 +618,130 @@ async function parentTabFor(g: GraphStore, visit: VisitNode): Promise<string | n
   if (!parentVisit) return null;
   const tabEdge = (await g.outInterval(parentVisit.id, 'in_tab'))[0];
   return tabEdge?.to_id ?? null;
+}
+
+// ---- Tab-load view queries ----
+//
+// Answers "how many tabs and windows do I have open, is the count trending
+// up or down, and which tabs sit in which window right now?" Used by the
+// Tab Load dashboard view. Runs on the same graph nodes the ingest layer
+// already populates (Tab.opened_at/closed_at, Window.opened_at/closed_at,
+// in_window / in_tab edges).
+
+export interface OpenCountsSample {
+  at: number;
+  tab_count: number;
+  window_count: number;
+}
+
+/**
+ * Sample open-tab and open-window counts across [tFrom, tTo] at `samples+1`
+ * evenly-spaced instants. A tab or window is "open at t" iff
+ *   opened_at <= t AND (closed_at == null OR closed_at > t)
+ *
+ * Deliberately in-memory — personal-scale data is hundreds to low thousands
+ * of tabs; O(N * samples) is trivial.
+ */
+export async function openCountsBetween(
+  g: GraphStore,
+  tFrom: number,
+  tTo: number,
+  samples = 60,
+): Promise<OpenCountsSample[]> {
+  if (tTo <= tFrom || samples <= 0) return [];
+  const tabs = await g.nodesOfType<TabNode>('Tab');
+  const windows = await g.nodesOfType<WindowNode>('Window');
+
+  const step = (tTo - tFrom) / samples;
+  const out: OpenCountsSample[] = [];
+  for (let i = 0; i <= samples; i++) {
+    const at = tFrom + i * step;
+    let tab_count = 0;
+    for (const t of tabs) {
+      if (t.opened_at > at) continue;
+      if (t.closed_at != null && t.closed_at <= at) continue;
+      tab_count++;
+    }
+    let window_count = 0;
+    for (const w of windows) {
+      if (w.opened_at > at) continue;
+      if (w.closed_at != null && w.closed_at <= at) continue;
+      window_count++;
+    }
+    out.push({ at, tab_count, window_count });
+  }
+  return out;
+}
+
+export interface OpenTabRow {
+  tab: TabNode;
+  window_id: string;
+  current_page: PageNode | null;
+  current_visit: VisitNode | null;
+}
+
+export interface OpenWindowGroup {
+  window: WindowNode;
+  tabs: OpenTabRow[];
+}
+
+/**
+ * Right-now snapshot of currently-open tabs grouped by window. "Currently
+ * open" is graph-derived — a Tab with `closed_at == null` that sits in a
+ * Window with `closed_at == null`. If the SW missed a close event these
+ * can be stale; reconciling against `chrome.tabs.query({})` is a follow-up.
+ *
+ * For each open Tab, the current page is the Visit with the greatest
+ * `at_time` in that tab (typically its `ended_at == null` visit).
+ */
+export async function openTabsGrouped(g: GraphStore): Promise<OpenWindowGroup[]> {
+  const openTabs = (await g.nodesOfType<TabNode>('Tab')).filter(
+    (t) => t.closed_at == null,
+  );
+  const openWindows = (await g.nodesOfType<WindowNode>('Window')).filter(
+    (w) => w.closed_at == null,
+  );
+  const windowsById = new Map(openWindows.map((w) => [w.id, w]));
+  const groups = new Map<string, OpenTabRow[]>();
+
+  for (const tab of openTabs) {
+    const windowEdge = (await g.outInterval(tab.id, 'in_window'))[0];
+    if (!windowEdge) continue;
+    const window_id = windowEdge.to_id;
+    if (!windowsById.has(window_id)) continue;
+
+    const visitEdges = await g.inInterval(tab.id, 'in_tab');
+    let currentVisit: VisitNode | null = null;
+    for (const e of visitEdges) {
+      const v = await g.getNode<VisitNode>(e.from_id);
+      if (!v) continue;
+      if (!currentVisit || v.at_time > currentVisit.at_time) currentVisit = v;
+    }
+    let currentPage: PageNode | null = null;
+    if (currentVisit) {
+      const pageEdge = (await g.outInterval(currentVisit.id, 'of_page'))[0];
+      if (pageEdge) {
+        currentPage = (await g.getNode<PageNode>(pageEdge.to_id)) ?? null;
+      }
+    }
+
+    const row: OpenTabRow = {
+      tab,
+      window_id,
+      current_page: currentPage,
+      current_visit: currentVisit,
+    };
+    const bucket = groups.get(window_id);
+    if (bucket) bucket.push(row);
+    else groups.set(window_id, [row]);
+  }
+
+  const result: OpenWindowGroup[] = [];
+  for (const [window_id, tabRows] of groups) {
+    tabRows.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
+    const window = windowsById.get(window_id);
+    if (window) result.push({ window, tabs: tabRows });
+  }
+  result.sort((a, b) => a.window.opened_at - b.window.opened_at);
+  return result;
 }

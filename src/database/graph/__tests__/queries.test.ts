@@ -35,6 +35,8 @@ import {
 import { GraphStore } from '../store';
 import {
   causalPredecessors,
+  openCountsBetween,
+  openTabsGrouped,
   pagesAndTransitionsBetween,
   pagesMatching,
   pagesOpenedFromDomain,
@@ -594,5 +596,75 @@ describe('pagesAndTransitionsBetween', () => {
     const result = await pagesAndTransitionsBetween(store, 0, 3 * H);
     expect(result.pages).toEqual([]);
     expect(result.transitions).toEqual([]);
+  });
+});
+
+// ---- 9. Tab-load view queries ----
+//
+// Fixture recap for time reasoning:
+//   w1 opened at T.s1_start,  never closed
+//   t1 opened at T.s1_start,  never closed
+//   t2 opened at T.v3_start,  closed at T.t2_close
+
+describe('openCountsBetween', () => {
+  it('reports 0 open before any window/tab exists', async () => {
+    const { store } = await freshLoadedStore();
+    const samples = await openCountsBetween(store, 0, T.s1_start - 1000, 3);
+    for (const s of samples) {
+      expect(s.tab_count).toBe(0);
+      expect(s.window_count).toBe(0);
+    }
+  });
+
+  it('reports the right counts across the tab2 lifetime and beyond', async () => {
+    const { store } = await freshLoadedStore();
+
+    // 5 samples spanning s1_start..s2_end. Enough to hit both regimes.
+    const samples = await openCountsBetween(store, T.s1_start, T.s2_end, 20);
+
+    // Before tab2 opens: 1 tab open (t1), 1 window.
+    const beforeT2 = samples.find((s) => s.at < T.v3_start);
+    expect(beforeT2?.tab_count).toBe(1);
+    expect(beforeT2?.window_count).toBe(1);
+
+    // While tab2 is open: 2 tabs.
+    const duringT2 = samples.find((s) => s.at >= T.v3_start && s.at < T.t2_close);
+    expect(duringT2?.tab_count).toBe(2);
+
+    // After tab2 closes: back to 1 tab.
+    const afterT2 = samples.find((s) => s.at > T.t2_close);
+    expect(afterT2?.tab_count).toBe(1);
+    expect(afterT2?.window_count).toBe(1);
+  });
+
+  it('returns [] for a zero-width or inverted window', async () => {
+    const { store } = await freshLoadedStore();
+    expect(await openCountsBetween(store, T.s1_start, T.s1_start, 10)).toEqual([]);
+    expect(await openCountsBetween(store, T.s2_end, T.s1_start, 10)).toEqual([]);
+  });
+});
+
+describe('openTabsGrouped', () => {
+  it('groups the single still-open tab under its still-open window', async () => {
+    const { store } = await freshLoadedStore();
+    const groups = await openTabsGrouped(store);
+
+    // Only w1 is still open (never got closed_at), only t1 sits in it
+    // (t2 is closed).
+    expect(groups.length).toBe(1);
+    expect(groups[0].window.id).toBe('w1');
+    expect(groups[0].tabs.length).toBe(1);
+    expect(groups[0].tabs[0].tab.id).toBe('t1');
+  });
+
+  it("names the tab's most recent visit's page", async () => {
+    const { store } = await freshLoadedStore();
+    const groups = await openTabsGrouped(store);
+
+    // t1 hosted v1..v6 (v6 is the most recent), which is
+    // react.dev/reference/hooks in the fixture. Its page id is
+    // `p_react_hooks`.
+    expect(groups[0].tabs[0].current_visit?.id).toBe('v6');
+    expect(groups[0].tabs[0].current_page?.id).toBe('p_react_hooks');
   });
 });

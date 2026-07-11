@@ -15,8 +15,9 @@ import { SessionBrowser } from './SessionBrowser';
 import { TimelineView } from './TimelineView';
 import { NodeGraphView } from './NodeGraphView';
 import { PageSearch } from './PageSearch';
+import { TabLoadView } from './TabLoadView';
 
-export type ViewName = 'sessions' | 'timeline' | 'graph' | 'search';
+export type ViewName = 'sessions' | 'timeline' | 'graph' | 'search' | 'tabs';
 
 export interface DashboardSelection {
   view: ViewName;
@@ -30,6 +31,7 @@ const VIEWS: ReadonlyArray<{ id: ViewName; label: string }> = [
   { id: 'sessions', label: 'Sessions' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'graph', label: 'Graph' },
+  { id: 'tabs', label: 'Tabs' },
   { id: 'search', label: 'Search' },
 ];
 
@@ -139,6 +141,7 @@ export const DashboardShell: React.FC = () => {
             />
           )}
           {selection.view === 'graph' && <NodeGraphView />}
+          {selection.view === 'tabs' && <TabLoadView />}
           {selection.view === 'search' && (
             <PageSearch onOpenPageTimeline={gotoTimelineForPage} />
           )}

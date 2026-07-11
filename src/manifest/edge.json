@@ -3,6 +3,7 @@
   "name": "TabKiller",
   "version": "0.1.0",
   "description": "Universal browser plugin for taming prolific use of browser windows and tabs",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvlhUBDYgnmA9jx6qQFk97swgTbpWgjhIlPRQDuBMY4tu8x56pf9rFdpkCeNkXa13kkLAYe0zVB7dOYwLryv1TnSr8IVPuLy6BslSFetuW9rGBTVU6wJaFEraHFERCrrJ6X2GVUiVilngmKjqaUC6j+S24mPh+DmfOT5AklSB+Zw2kzW/L9UqTuwdUGUs3uvHd/Gb45zv5g2B7yjn9MOLyMh3Cpod0b2SgVgshWlTaqN0wYc+V+5tB+7xyrfT+BZPRd/TDHswSs0oCo/gTIFhPrcHpuivmsrs81kZ1z8qBAGnh9A+oAZ8nOfKqxkN+2QLeUnxS094u7yLRQab3R9kqwIDAQAB",
   "permissions": [
     "tabs",
     "activeTab",
@@ -26,8 +27,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content/content-script.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/content-script.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
@@ -56,14 +62,19 @@
         "styles/*",
         "content/*.css"
       ],
-      "matches": ["http://*/*", "https://*/*"]
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
     }
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; frame-ancestors 'none';"
   },
   "externally_connectable": {
-    "matches": ["*://localhost/*"]
+    "matches": [
+      "*://localhost/*"
+    ]
   },
   "incognito": "spanning",
   "minimum_chrome_version": "88",

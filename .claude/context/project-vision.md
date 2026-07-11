@@ -1,19 +1,45 @@
 ---
 created: 2025-09-05T01:40:49Z
-last_updated: 2025-09-05T01:40:49Z
-version: 1.0
+last_updated: 2026-07-11T11:17:46Z
+version: 2.0
 author: Claude Code PM System
 ---
 
 # Project Vision
 
-## Long-Term Vision
+## The Real Thesis
 
-### Mission Statement
-To revolutionize how humans interact with digital information by creating the world's most intelligent, privacy-preserving browsing history system that understands context, relationships, and user intent.
+**We have digital amnesia into our own online lives.**
 
-### Ultimate Goal
-Transform the browser from a simple navigation tool into an intelligent knowledge companion that learns from user behavior, preserves important information, and provides instant access to relevant insights across all browsing activities.
+The record of what we read, where our interests came from, and how they
+evolved is either lost or fragmented across a dozen browsers and
+machines. Advertisers and search vendors keep better records of our
+browsing than we do. The asymmetry is engineered: the systems built to
+manage our attention have deliberately not preserved the record for us,
+because if we could clearly see what we spent our time on, we would
+start asking uncomfortable questions of their products.
+
+TabKiller is **memory returned to the person whose life it is.** Not a
+tab manager, not "history 2.0" — a personal telemetry layer for the
+browser, kept local, kept private, structured as a temporal graph the
+user can actually query and interpret. Where interests started, how
+they evolved, what they turned into — the map of one's own intellectual
+trajectory that no browser vendor has an incentive to build.
+
+## Mission Statement
+
+Return memory to the person whose life it is. Turn browsing — the
+richest continuous stream of a person's intellectual exploration — from
+ephemeral ambient noise into a legible, queryable, personal history.
+
+## Ultimate Goal
+
+Personal intellectual archaeology. Not "here's the URL you visited last
+Tuesday" but *"here is where scuba diving started for you, here is when
+it plateaued, here is the pivot from marine biology reading that led to
+it."* The graph is the substrate; interpretation on top of it — via
+LLMs, embeddings, and a viewer that shows the shape of interests — is
+the product.
 
 ## Strategic Direction
 

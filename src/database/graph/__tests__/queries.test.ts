@@ -563,12 +563,14 @@ describe('pagesAndTransitionsBetween', () => {
     }
   });
 
-  it('filters transitions to those whose source page also lies inside the window', async () => {
+  it('pulls in out-of-window parent pages so incoming edges are drawable', async () => {
     const { store } = await freshLoadedStore();
 
     // Narrow window that covers v4..v6 but excludes v1/v2/v3.
-    // v4's navigated_from points at v2 (outside window) — should be dropped.
-    // v5->v4 and v6->v5 stay because both endpoints are in-window.
+    // v4's navigated_from points at v2 (outside window). The dashboard needs
+    // to render "you got here from this earlier page" so v2's page (p_gh1)
+    // must be surfaced as an external parent even though v2's at_time is
+    // outside the window.
     const tFrom = T.v4_start;
     const tTo = T.v6_start + 1000;
 
@@ -578,9 +580,13 @@ describe('pagesAndTransitionsBetween', () => {
       .map((t) => `${t.kind}::${t.from_page_id}->${t.to_page_id}`)
       .sort();
     expect(keys).toEqual([
+      'navigated_from::p_gh1->p_goo_search',
       'navigated_from::p_goo_search->p_react',
       'navigated_from::p_react->p_react_hooks',
     ]);
+
+    const pageIds = result.pages.map((p) => p.id).sort();
+    expect(pageIds).toEqual(['p_gh1', 'p_goo_search', 'p_react', 'p_react_hooks']);
   });
 
   it('returns empty result for a window before any visit', async () => {

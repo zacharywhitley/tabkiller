@@ -537,14 +537,48 @@ export async function pagesAndTransitionsBetween(
     `${kind}::${from}->${to}`;
   const transitions = new Map<string, PageTransition>();
 
+  // When an edge points at a parent visit outside the current window (very
+  // common: `opened_from` always points backward, and the opener is
+  // typically older than tFrom), we still want the parent Page in the graph
+  // so the edge is drawable. Cache lookups by parent visit id.
+  const externalParentPageId = new Map<string, string | null>();
+  async function resolveParentPageId(parentVisitId: string): Promise<string | null> {
+    if (externalParentPageId.has(parentVisitId)) {
+      return externalParentPageId.get(parentVisitId) ?? null;
+    }
+    const parentVisit = await g.getNode<VisitNode>(parentVisitId);
+    if (!parentVisit) {
+      externalParentPageId.set(parentVisitId, null);
+      return null;
+    }
+    const parentPageEdge = (await g.outInterval(parentVisit.id, 'of_page'))[0];
+    if (!parentPageEdge) {
+      externalParentPageId.set(parentVisitId, null);
+      return null;
+    }
+    const parentPage = await g.getNode<PageNode>(parentPageEdge.to_id);
+    if (!parentPage) {
+      externalParentPageId.set(parentVisitId, null);
+      return null;
+    }
+    pagesById.set(parentPage.id, parentPage);
+    visitToPageId.set(parentVisit.id, parentPage.id);
+    externalParentPageId.set(parentVisitId, parentPage.id);
+    return parentPage.id;
+  }
+
   for (const row of visitRows) {
     const toPageId = visitToPageId.get(row.visit.id);
     if (!toPageId) continue;
 
     for (const kind of ['navigated_from', 'opened_from'] as const) {
       for (const edge of await g.outPoint(row.visit.id, kind)) {
-        const fromPageId = visitToPageId.get(edge.to_id);
-        if (!fromPageId) continue;
+        let fromPageId = visitToPageId.get(edge.to_id);
+        if (!fromPageId) {
+          const resolved = await resolveParentPageId(edge.to_id);
+          if (!resolved) continue;
+          fromPageId = resolved;
+        }
         if (fromPageId === toPageId) continue;
         const key = transitionKey(fromPageId, toPageId, kind);
         const existing = transitions.get(key);

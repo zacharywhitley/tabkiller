@@ -57,6 +57,22 @@ interface Layout {
   ticks: Array<{ x: number; label: string }>;
 }
 
+// Short per-node label for the SVG. Prefer the URL path so pages that share
+// a domain are visually distinct. Fall back to the page title, then a
+// domain-only string if the URL is unparseable.
+function pageLabelFor(rawUrl: string, title: string | null | undefined): string {
+  let path = '';
+  try {
+    const parsed = new URL(rawUrl);
+    path = (parsed.pathname || '') + (parsed.search || '');
+    if (path === '/' || path === '') path = '';
+  } catch {
+    // fallthrough
+  }
+  const preferred = path || title || rawUrl;
+  return preferred.length > 44 ? preferred.slice(0, 41) + '…' : preferred;
+}
+
 function bucketDomains(pages: PageNode[]): Map<string, number> {
   const domains = new Set<string>();
   for (const p of pages) {
@@ -161,6 +177,7 @@ const darkOverrides = `
     .tk-ng__canvas { background: #26282c !important; border-color: #3a3d42 !important; }
     .tk-ng__axis { fill: #b0b3b7 !important; }
     .tk-ng__lane-label { fill: #a8abb0 !important; }
+    .tk-ng__nodelabel { fill: #cdd0d5 !important; }
     .tk-ng__edge { stroke: #5f6266 !important; }
   }
 `;
@@ -324,6 +341,16 @@ export const NodeGraphView: React.FC = () => {
                   stroke={n.color.border}
                   strokeWidth={1.5}
                 />
+                <text
+                  x={n.cx + n.r + 4}
+                  y={n.cy + 3}
+                  fontSize={10}
+                  fill="#3f4147"
+                  className="tk-ng__nodelabel"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {pageLabelFor(n.page.raw_url_first_seen || n.page.normalized_url, n.page.title)}
+                </text>
               </g>
             ))}
           </svg>

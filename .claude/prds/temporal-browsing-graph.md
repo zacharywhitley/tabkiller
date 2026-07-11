@@ -1,7 +1,7 @@
 ---
 name: temporal-browsing-graph
 description: Visit-centric temporal graph model for TabKiller's core data layer — single IndexedDB store, two edge shapes, event-time / recorded-at bitemporality, no exotic infrastructure.
-status: backlog
+status: complete
 created: 2026-07-10T00:22:14Z
 supersedes: refactor-neodb-and-ssb-to-gundb
 ---

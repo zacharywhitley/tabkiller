@@ -1,9 +1,10 @@
 ---
 name: temporal-browsing-graph
-status: backlog
+status: completed
 created: 2026-07-10T00:55:11Z
-updated: 2026-07-10T01:15:17Z
-progress: 0%
+updated: 2026-07-11T11:07:36Z
+completed: 2026-07-11T11:07:36Z
+progress: 100%
 prd: .claude/prds/temporal-browsing-graph.md
 github: https://github.com/zacharywhitley/tabkiller/issues/48
 ---

@@ -745,3 +745,86 @@ export async function openTabsGrouped(g: GraphStore): Promise<OpenWindowGroup[]>
   result.sort((a, b) => a.window.opened_at - b.window.opened_at);
   return result;
 }
+
+// ---- Window/Tab/Visit tree in a time window ----
+//
+// Hierarchical structure for the Node Graph view. Answers "for the browsing
+// I did between tFrom and tTo, show me every Window I had open, every Tab
+// inside those Windows, and every Visit inside each Tab in chronological
+// order." Used to place visits in nested vertical lanes and to draw the
+// causal arrows (navigated_from within a tab, opened_from across tabs).
+
+export interface WindowTabVisitTab {
+  tab: TabNode;
+  visits: { visit: VisitNode; page: PageNode | null }[];
+}
+
+export interface WindowTabVisitWindow {
+  window: WindowNode;
+  tabs: WindowTabVisitTab[];
+}
+
+/**
+ * A window is "in-window" if its lifetime intersects [tFrom, tTo]:
+ *   opened_at <= tTo AND (closed_at == null OR closed_at > tFrom)
+ * Same rule for a Tab and a Visit. A Visit is placed under the Tab named
+ * by its `in_tab` edge; a Tab is placed under the Window named by its
+ * `in_window` edge. Empty Tabs and empty Windows are omitted so the graph
+ * doesn't grow lanes for containers with nothing to show.
+ */
+export async function windowsWithVisitsBetween(
+  g: GraphStore,
+  tFrom: number,
+  tTo: number,
+): Promise<WindowTabVisitWindow[]> {
+  const overlaps = (
+    opened: number,
+    closed: number | null,
+  ): boolean => opened <= tTo && (closed == null || closed > tFrom);
+
+  const windows = (await g.nodesOfType<WindowNode>('Window')).filter((w) =>
+    overlaps(w.opened_at, w.closed_at),
+  );
+  const tabs = (await g.nodesOfType<TabNode>('Tab')).filter((t) =>
+    overlaps(t.opened_at, t.closed_at),
+  );
+  const visits = (await g.nodesOfType<VisitNode>('Visit')).filter((v) =>
+    overlaps(v.at_time, v.ended_at),
+  );
+
+  const visitsByTab = new Map<string, { visit: VisitNode; page: PageNode | null }[]>();
+  for (const visit of visits) {
+    const tabEdge = (await g.outInterval(visit.id, 'in_tab'))[0];
+    if (!tabEdge) continue;
+    const tabId = tabEdge.to_id;
+    const pageEdge = (await g.outInterval(visit.id, 'of_page'))[0];
+    const page = pageEdge ? ((await g.getNode<PageNode>(pageEdge.to_id)) ?? null) : null;
+    const bucket = visitsByTab.get(tabId);
+    if (bucket) bucket.push({ visit, page });
+    else visitsByTab.set(tabId, [{ visit, page }]);
+  }
+
+  const tabsByWindow = new Map<string, WindowTabVisitTab[]>();
+  for (const tab of tabs) {
+    const tabVisits = visitsByTab.get(tab.id);
+    if (!tabVisits || tabVisits.length === 0) continue;
+    tabVisits.sort((a, b) => a.visit.at_time - b.visit.at_time);
+    const winEdge = (await g.outInterval(tab.id, 'in_window'))[0];
+    if (!winEdge) continue;
+    const winId = winEdge.to_id;
+    const entry: WindowTabVisitTab = { tab, visits: tabVisits };
+    const bucket = tabsByWindow.get(winId);
+    if (bucket) bucket.push(entry);
+    else tabsByWindow.set(winId, [entry]);
+  }
+
+  const result: WindowTabVisitWindow[] = [];
+  for (const window of windows) {
+    const winTabs = tabsByWindow.get(window.id);
+    if (!winTabs || winTabs.length === 0) continue;
+    winTabs.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
+    result.push({ window, tabs: winTabs });
+  }
+  result.sort((a, b) => a.window.opened_at - b.window.opened_at);
+  return result;
+}

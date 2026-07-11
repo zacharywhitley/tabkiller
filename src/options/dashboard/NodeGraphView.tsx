@@ -1,66 +1,77 @@
 /**
- * Node graph view — temporally-anchored Pages + inter-Page transitions.
+ * Node Graph view — visits placed in Tab lanes nested under Window bands.
  *
- * Layout rules (see also the epic brief):
- *   - X coord = normalized `first_seen` mapped linearly to the visible
- *     window (leftward = older).
- *   - Y coord = bucketed domain lane. Same domain -> same lane so a
- *     Page's vertical position stays stable across visits.
- *   - Radius ~ sqrt(visit_count) so a Page visited 100x is ~3x wider
- *     than one visited 10x, not 10x wider.
- *   - Edges = cubic curve between two node centers with an arrow head.
- *     `navigated_from` = solid; `opened_from` = dashed.
+ * Y layout is a two-tier hierarchy: each Window is a horizontal band, and
+ * within a band each of that Window's Tabs gets its own row. Every Visit
+ * lands as a node at (its at_time, its Tab's row). Edges are the causal
+ * arrows between visits: `navigated_from` (solid, intra-tab) and
+ * `opened_from` (dashed, cross-tab).
  *
- * Deliberately not a force layout: pure force on temporal data is
- * pretty but useless. Anchoring by time keeps the "when" legible.
+ * Deliberately Visit-nodes, not Page-nodes: a Page can be visited in many
+ * Tabs and the whole point of this view is to *see* which Tab held it.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { openGraphStoreForDebug } from '../debug/index';
-import { pagesAndTransitionsBetween } from '../../database/graph/queries';
+import { windowsWithVisitsBetween } from '../../database/graph/queries';
 import type {
-  PageTransition,
-  PagesAndTransitionsResult,
+  WindowTabVisitWindow,
 } from '../../database/graph/queries';
-import type { PageNode } from '../../database/graph/types';
+import type { PageNode, TabNode, VisitNode, WindowNode } from '../../database/graph/types';
 import { colorForDomain, hostnameOf } from './domainColor';
 
-const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000; // last 24h
+const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CANVAS_PADDING = 40;
 const AXIS_HEIGHT = 24;
-const MIN_R = 5;
-const MAX_R = 11;
+const NODE_R = 6;
+const TAB_LANE_HEIGHT = 24;
+const WINDOW_HEADER_HEIGHT = 22;
+const WINDOW_GAP = 8;
 
-interface Node {
-  page: PageNode;
+interface VisitNodeShape {
+  visit: VisitNode;
+  page: PageNode | null;
   cx: number;
   cy: number;
-  r: number;
   color: ReturnType<typeof colorForDomain>;
   domain: string;
+  tabId: string;
+  windowId: string;
 }
 
-interface Edge {
+interface EdgeShape {
+  key: string;
   from_id: string;
   to_id: string;
-  kind: PageTransition['kind'];
-  count: number;
+  kind: 'navigated_from' | 'opened_from';
   path: string;
 }
 
+interface TabBand {
+  tab: TabNode;
+  y: number;
+  labelY: number;
+  visitIds: string[];
+}
+
+interface WindowBand {
+  window: WindowNode;
+  y: number;
+  height: number;
+  labelY: number;
+  tabs: TabBand[];
+}
+
 interface Layout {
-  nodes: Node[];
-  edges: Edge[];
-  laneLabels: Array<{ y: number; label: string }>;
+  nodes: VisitNodeShape[];
+  edges: EdgeShape[];
+  windows: WindowBand[];
   width: number;
   height: number;
   ticks: Array<{ x: number; label: string }>;
 }
 
-// Short per-node label for the SVG. Prefer the URL path so pages that share
-// a domain are visually distinct. Fall back to the page title, then a
-// domain-only string if the URL is unparseable.
-function pageLabelFor(rawUrl: string, title: string | null | undefined): string {
+function shortLabel(rawUrl: string, title: string | null | undefined): string {
   let path = '';
   try {
     const parsed = new URL(rawUrl);
@@ -74,76 +85,85 @@ function pageLabelFor(rawUrl: string, title: string | null | undefined): string 
 }
 
 function computeLayout(
-  data: PagesAndTransitionsResult,
+  data: WindowTabVisitWindow[],
   width: number,
   windowStart: number,
   windowEnd: number,
 ): Layout {
-  const laneHeight = 26;
-  const laneY0 = AXIS_HEIGHT + CANVAS_PADDING;
   const usableWidth = Math.max(200, width - 2 * CANVAS_PADDING);
   const range = Math.max(1, windowEnd - windowStart);
   const timeToX = (t: number) => CANVAS_PADDING + ((t - windowStart) / range) * usableWidth;
 
-  const maxCount = data.pages.reduce((m, p) => Math.max(m, p.visit_count), 1);
+  const nodesById = new Map<string, VisitNodeShape>();
+  const nodes: VisitNodeShape[] = [];
+  const windows: WindowBand[] = [];
 
-  // Every Page gets its own vertical lane. Sort by domain (alphabetical) so
-  // same-domain pages cluster, then by first_seen within a domain so the
-  // sequence of arrivals reads top-to-bottom.
-  const visible = data.pages.filter(
-    (p) => p.first_seen >= windowStart && p.first_seen <= windowEnd,
-  );
-  visible.sort((a, b) => {
-    const da = hostnameOf(a.raw_url_first_seen || a.normalized_url);
-    const db = hostnameOf(b.raw_url_first_seen || b.normalized_url);
-    if (da !== db) return da < db ? -1 : 1;
-    return a.first_seen - b.first_seen;
-  });
-  const laneByPageId = new Map<string, number>();
-  visible.forEach((p, i) => laneByPageId.set(p.id, i));
-  const laneCount = Math.max(1, visible.length);
-
-  const nodes: Node[] = visible.map((p) => {
-    const url = p.raw_url_first_seen || p.normalized_url;
-    const domain = hostnameOf(url);
-    const lane = laneByPageId.get(p.id) ?? 0;
-    const r = MIN_R + (MAX_R - MIN_R) * Math.sqrt(p.visit_count / maxCount);
-    return {
-      page: p,
-      cx: timeToX(p.first_seen),
-      cy: laneY0 + lane * laneHeight + laneHeight / 2,
-      r,
-      color: colorForDomain(domain),
-      domain,
-    };
-  });
-
-  const nodeById = new Map(nodes.map((n) => [n.page.id, n]));
-  const edges: Edge[] = [];
-  for (const t of data.transitions) {
-    const a = nodeById.get(t.from_page_id);
-    const b = nodeById.get(t.to_page_id);
-    if (!a || !b) continue;
-    const midX = (a.cx + b.cx) / 2;
-    const midY = a.cy === b.cy ? a.cy - 30 : (a.cy + b.cy) / 2;
-    const path = `M ${a.cx} ${a.cy} Q ${midX} ${midY}, ${b.cx} ${b.cy}`;
-    edges.push({
-      from_id: t.from_page_id,
-      to_id: t.to_page_id,
-      kind: t.kind,
-      count: t.count,
-      path,
+  let yCursor = AXIS_HEIGHT + CANVAS_PADDING;
+  for (const w of data) {
+    const winY = yCursor;
+    const labelY = winY + 14;
+    const tabsY0 = winY + WINDOW_HEADER_HEIGHT;
+    const tabBands: TabBand[] = [];
+    let laneIndex = 0;
+    for (const t of w.tabs) {
+      const laneY = tabsY0 + laneIndex * TAB_LANE_HEIGHT + TAB_LANE_HEIGHT / 2;
+      const visitIds: string[] = [];
+      for (const { visit, page } of t.visits) {
+        const url = page?.raw_url_first_seen || page?.normalized_url || '';
+        const domain = url ? hostnameOf(url) : '(no page)';
+        const node: VisitNodeShape = {
+          visit,
+          page,
+          cx: timeToX(visit.at_time),
+          cy: laneY,
+          color: colorForDomain(domain),
+          domain,
+          tabId: t.tab.id,
+          windowId: w.window.id,
+        };
+        nodes.push(node);
+        nodesById.set(visit.id, node);
+        visitIds.push(visit.id);
+      }
+      tabBands.push({
+        tab: t.tab,
+        y: laneY,
+        labelY: laneY + 3,
+        visitIds,
+      });
+      laneIndex++;
+    }
+    const bandHeight = WINDOW_HEADER_HEIGHT + laneIndex * TAB_LANE_HEIGHT;
+    windows.push({
+      window: w.window,
+      y: winY,
+      height: bandHeight,
+      labelY,
+      tabs: tabBands,
     });
+    yCursor += bandHeight + WINDOW_GAP;
   }
 
-  // Lane labels: show the domain only at the y of its first page in the
-  // sort, so pages cluster visually without repeating the domain per row.
-  const laneLabels: Layout['laneLabels'] = [];
-  let lastDomain: string | null = null;
-  for (const n of nodes) {
-    if (n.domain === lastDomain) continue;
-    laneLabels.push({ y: n.cy, label: n.domain });
-    lastDomain = n.domain;
+  // Edges: walk every visit's navigated_from and opened_from. Both point at
+  // the parent visit; render as a curve from the child (source of the edge
+  // record) to the parent (target).
+  const edges: EdgeShape[] = [];
+  for (const w of data) {
+    for (const t of w.tabs) {
+      for (const { visit } of t.visits) {
+        const child = nodesById.get(visit.id);
+        if (!child) continue;
+        // navigated_from and opened_from edges live on graph_edges; the
+        // WindowTabVisit query doesn't return them because they aren't
+        // owned by the window/tab tree — they're relationships between
+        // visits. Since ingestion may run this view against a huge graph,
+        // we pull edges lazily via node metadata... except the query
+        // shape has to be denormalized to include them, so we defer the
+        // walk to the fetch layer via a follow-up query pass in the
+        // component. See `walkVisitEdges` below.
+        void child;
+      }
+    }
   }
 
   const ticks: Layout['ticks'] = [];
@@ -156,8 +176,8 @@ function computeLayout(
     });
   }
 
-  const height = laneY0 + laneCount * laneHeight + CANVAS_PADDING;
-  return { nodes, edges, laneLabels, width, height, ticks };
+  const height = yCursor + CANVAS_PADDING;
+  return { nodes, edges, windows, width, height, ticks };
 }
 
 const RANGE_OPTIONS: ReadonlyArray<{ label: string; ms: number }> = [
@@ -183,15 +203,46 @@ const darkOverrides = `
     .tk-ng__axis { fill: #b0b3b7 !important; }
     .tk-ng__lane-label { fill: #a8abb0 !important; }
     .tk-ng__nodelabel { fill: #cdd0d5 !important; }
-    .tk-ng__edge { stroke: #5f6266 !important; }
+    .tk-ng__winlabel { fill: #dadde0 !important; }
+    .tk-ng__winband { fill: rgba(255,255,255,0.03) !important; }
+    .tk-ng__edge { stroke: #6a6d72 !important; }
   }
 `;
 
-interface Hover { node: Node; x: number; y: number }
+interface Hover { node: VisitNodeShape; x: number; y: number }
+
+/**
+ * Walk `navigated_from` + `opened_from` from every visit in the layout to
+ * build the edge list. Runs in the component (not the layout) because it
+ * needs live IDB reads that the pure layout function doesn't have.
+ */
+async function walkVisitEdges(
+  visitIds: string[],
+  nodesById: Map<string, VisitNodeShape>,
+): Promise<EdgeShape[]> {
+  const g = await openGraphStoreForDebug();
+  const edges: EdgeShape[] = [];
+  for (const id of visitIds) {
+    for (const kind of ['navigated_from', 'opened_from'] as const) {
+      const outEdges = await g.outPoint(id, kind);
+      for (const e of outEdges) {
+        const from = nodesById.get(id);
+        const to = nodesById.get(e.to_id);
+        if (!from || !to) continue;
+        const midX = (from.cx + to.cx) / 2;
+        const midY = from.cy === to.cy ? from.cy - 20 : (from.cy + to.cy) / 2;
+        const path = `M ${from.cx} ${from.cy} Q ${midX} ${midY}, ${to.cx} ${to.cy}`;
+        edges.push({ key: `${kind}::${id}->${e.to_id}`, from_id: id, to_id: e.to_id, kind, path });
+      }
+    }
+  }
+  return edges;
+}
 
 export const NodeGraphView: React.FC = () => {
   const [rangeMs, setRangeMs] = useState<number>(DEFAULT_WINDOW_MS);
-  const [data, setData] = useState<PagesAndTransitionsResult | null>(null);
+  const [data, setData] = useState<WindowTabVisitWindow[] | null>(null);
+  const [edges, setEdges] = useState<EdgeShape[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(1000);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -204,12 +255,13 @@ export const NodeGraphView: React.FC = () => {
     let cancelled = false;
     (async () => {
       setData(null);
+      setEdges([]);
       setError(null);
       try {
         const g = await openGraphStoreForDebug();
         const t = Date.now();
         const from = t - rangeMs;
-        const result = await pagesAndTransitionsBetween(g, from, t);
+        const result = await windowsWithVisitsBetween(g, from, t);
         if (cancelled) return;
         setData(result);
         setWindowRange([from, t]);
@@ -235,21 +287,40 @@ export const NodeGraphView: React.FC = () => {
     return computeLayout(data, width, windowRange[0], windowRange[1]);
   }, [data, width, windowRange]);
 
+  useEffect(() => {
+    if (!layout) return;
+    let cancelled = false;
+    (async () => {
+      const nodesById = new Map(layout.nodes.map((n) => [n.visit.id, n]));
+      const ids = layout.nodes.map((n) => n.visit.id);
+      try {
+        const es = await walkVisitEdges(ids, nodesById);
+        if (!cancelled) setEdges(es);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [layout]);
+
   const onRangeChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
     setRangeMs(Number(event.target.value));
   }, []);
 
-  const onNodeEnter = useCallback((n: Node) => (event: React.MouseEvent) => {
+  const onNodeEnter = useCallback((n: VisitNodeShape) => (event: React.MouseEvent) => {
     setHover({ node: n, x: event.clientX, y: event.clientY });
   }, []);
   const onNodeMove = useCallback((event: React.MouseEvent) => {
     setHover((prev) => (prev ? { ...prev, x: event.clientX, y: event.clientY } : prev));
   }, []);
   const onNodeLeave = useCallback(() => setHover(null), []);
-  const onNodeClick = useCallback((n: Node) => () => {
-    const url = n.page.raw_url_first_seen || n.page.normalized_url;
+  const onNodeClick = useCallback((n: VisitNodeShape) => () => {
+    const url = n.page?.raw_url_first_seen || n.page?.normalized_url;
     if (url) globalThis.open(url, '_blank', 'noopener');
   }, []);
+
+  const totalVisits = data?.reduce((n, w) => n + w.tabs.reduce((m, t) => m + t.visits.length, 0), 0) ?? 0;
+  const totalTabs = data?.reduce((n, w) => n + w.tabs.length, 0) ?? 0;
 
   return (
     <>
@@ -263,19 +334,17 @@ export const NodeGraphView: React.FC = () => {
           ))}
         </select>
         <span style={{ fontSize: 12, opacity: 0.7 }}>
-          {data ? `${data.pages.length} pages · ${data.transitions.length} transitions` : ''}
+          {data ? `${data.length} windows · ${totalTabs} tabs · ${totalVisits} visits · ${edges.length} edges` : ''}
         </span>
       </div>
 
       {error && <div className="tk-dash__error">{error}</div>}
-
       {data === null && !error && <div style={styles.empty}>Loading…</div>}
-
-      {data && data.pages.length === 0 && (
-        <div style={styles.empty}>No pages in this window.</div>
+      {data && data.length === 0 && (
+        <div style={styles.empty}>No windows in this range.</div>
       )}
 
-      {layout && data && data.pages.length > 0 && (
+      {layout && data && data.length > 0 && (
         <div className="tk-ng__canvas" style={styles.canvas}>
           <svg width={layout.width} height={layout.height} data-testid="tk-ng-svg">
             <defs>
@@ -299,38 +368,69 @@ export const NodeGraphView: React.FC = () => {
               </text>
             ))}
 
-            {layout.laneLabels.map((lane) => (
-              <text
-                key={lane.label}
-                className="tk-ng__lane-label"
-                x={4}
-                y={lane.y + 4}
-                fontSize={10}
-                fill="#8a8d92"
-                fontFamily="ui-monospace, Menlo, monospace"
-                style={{ pointerEvents: 'none' }}
-              >
-                {lane.label}
-              </text>
+            {/* Window bands (background stripe + header) */}
+            {layout.windows.map((w) => (
+              <g key={w.window.id}>
+                <rect
+                  className="tk-ng__winband"
+                  x={0}
+                  y={w.y}
+                  width={layout.width}
+                  height={w.height}
+                  fill="rgba(0,0,0,0.03)"
+                />
+                <text
+                  className="tk-ng__winlabel"
+                  x={8}
+                  y={w.labelY}
+                  fontSize={11}
+                  fontWeight={600}
+                  fill="#4a4d52"
+                >
+                  Window #{w.window.browser_window_id}
+                  {w.window.closed_at != null ? ' (closed)' : ''} · {w.tabs.length} tab{w.tabs.length === 1 ? '' : 's'}
+                </text>
+              </g>
             ))}
 
-            {layout.edges.map((e) => (
+            {/* Tab lane labels */}
+            {layout.windows.flatMap((w) =>
+              w.tabs.map((t) => (
+                <text
+                  key={`${w.window.id}-${t.tab.id}-lbl`}
+                  className="tk-ng__lane-label"
+                  x={22}
+                  y={t.labelY}
+                  fontSize={10}
+                  fill="#8a8d92"
+                  fontFamily="ui-monospace, Menlo, monospace"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  Tab #{t.tab.browser_tab_id}
+                  {t.tab.closed_at != null ? ' ✕' : ''}
+                </text>
+              )),
+            )}
+
+            {/* Edges — drawn under nodes so nodes stay clickable */}
+            {edges.map((e) => (
               <path
-                key={`${e.kind}-${e.from_id}-${e.to_id}`}
+                key={e.key}
                 className="tk-ng__edge"
                 d={e.path}
                 fill="none"
                 stroke="#888"
-                strokeWidth={Math.min(3, 0.75 + Math.log2(e.count + 1))}
+                strokeWidth={1.2}
                 strokeDasharray={e.kind === 'opened_from' ? '4 3' : undefined}
                 markerEnd="url(#tk-ng-arrow)"
                 opacity={0.7}
               />
             ))}
 
+            {/* Visit nodes */}
             {layout.nodes.map((n) => (
               <g
-                key={n.page.id}
+                key={n.visit.id}
                 onMouseEnter={onNodeEnter(n)}
                 onMouseMove={onNodeMove}
                 onMouseLeave={onNodeLeave}
@@ -341,20 +441,20 @@ export const NodeGraphView: React.FC = () => {
                 <circle
                   cx={n.cx}
                   cy={n.cy}
-                  r={n.r}
+                  r={NODE_R}
                   fill={n.color.fill}
                   stroke={n.color.border}
                   strokeWidth={1.5}
                 />
                 <text
-                  x={n.cx + n.r + 4}
+                  x={n.cx + NODE_R + 4}
                   y={n.cy + 3}
                   fontSize={10}
                   fill="#3f4147"
                   className="tk-ng__nodelabel"
                   style={{ pointerEvents: 'none' }}
                 >
-                  {pageLabelFor(n.page.raw_url_first_seen || n.page.normalized_url, n.page.title)}
+                  {shortLabel(n.page?.raw_url_first_seen || n.page?.normalized_url || '', n.page?.title)}
                 </text>
               </g>
             ))}
@@ -365,12 +465,12 @@ export const NodeGraphView: React.FC = () => {
       {hover && (
         <div style={{ ...styles.tooltip, left: hover.x + 12, top: hover.y + 12 }}>
           <div style={{ marginBottom: 4, fontWeight: 600 }}>
-            {hover.node.page.title || hover.node.page.normalized_url}
+            {hover.node.page?.title || hover.node.page?.normalized_url || '(no page)'}
           </div>
-          <div style={{ opacity: 0.85 }}>{hover.node.page.raw_url_first_seen}</div>
+          <div style={{ opacity: 0.85 }}>{hover.node.page?.raw_url_first_seen}</div>
           <div style={{ marginTop: 4, opacity: 0.7 }}>domain: {hover.node.domain}</div>
-          <div style={{ opacity: 0.7 }}>visits: {hover.node.page.visit_count}</div>
-          <div style={{ opacity: 0.7 }}>first_seen: {new Date(hover.node.page.first_seen).toLocaleString()}</div>
+          <div style={{ opacity: 0.7 }}>visited at: {new Date(hover.node.visit.at_time).toLocaleString()}</div>
+          <div style={{ opacity: 0.7 }}>transition: {hover.node.visit.transition}</div>
         </div>
       )}
     </>

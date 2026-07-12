@@ -51,7 +51,7 @@ interface EdgeShape {
 }
 
 interface PageLane {
-  pageKey: string;
+  domainKey: string;
   labelY: number;
   y: number;
   label: string;
@@ -120,33 +120,31 @@ function computeLayout(
       const tabY = tabCursor;
       const tabLabelY = tabY + 12;
 
-      // Group this tab's visits by Page (using page.id when present; empty
-      // string for visits without a Page). First-visit-in-this-tab
-      // determines the row order so a tab reads top-to-bottom in the order
-      // the pages first arrived.
-      const laneByPageKey = new Map<string, PageLane>();
+      // Group this tab's visits by domain (indented under the tab). Row
+      // order = first-visit-of-that-domain-in-this-tab, so the tab reads
+      // top-to-bottom as "first domain you were on ... last domain you
+      // were on." Visits to the same domain but different paths sit on
+      // the same row; each dot carries its path as a per-node label.
+      const laneByDomain = new Map<string, PageLane>();
       const laneOrder: string[] = [];
       const laneStartY = tabY + TAB_HEADER_HEIGHT;
       for (const { visit, page } of t.visits) {
-        const pageKey = page?.id ?? `__nopage__:${visit.id}`;
-        let lane = laneByPageKey.get(pageKey);
-        if (!lane) {
-          const rawUrl = page?.raw_url_first_seen || page?.normalized_url || '(no page)';
-          const label = shortLabel(rawUrl, page?.title);
-          const laneY = laneStartY + laneOrder.length * PAGE_LANE_HEIGHT + PAGE_LANE_HEIGHT / 2;
-          lane = {
-            pageKey,
-            y: laneY,
-            labelY: laneY + 3,
-            label,
-            visitCount: 0,
-          };
-          laneByPageKey.set(pageKey, lane);
-          laneOrder.push(pageKey);
-        }
-        lane.visitCount += 1;
         const url = page?.raw_url_first_seen || page?.normalized_url || '';
         const domain = url ? hostnameOf(url) : '(no page)';
+        let lane = laneByDomain.get(domain);
+        if (!lane) {
+          const laneY = laneStartY + laneOrder.length * PAGE_LANE_HEIGHT + PAGE_LANE_HEIGHT / 2;
+          lane = {
+            domainKey: domain,
+            y: laneY,
+            labelY: laneY + 3,
+            label: domain,
+            visitCount: 0,
+          };
+          laneByDomain.set(domain, lane);
+          laneOrder.push(domain);
+        }
+        lane.visitCount += 1;
         const node: VisitNodeShape = {
           visit,
           page,
@@ -167,7 +165,7 @@ function computeLayout(
         y: tabY,
         height: tabHeight,
         labelY: tabLabelY,
-        pageLanes: laneOrder.map((k) => laneByPageKey.get(k)!),
+        pageLanes: laneOrder.map((k) => laneByDomain.get(k)!),
       });
       tabCursor += tabHeight + TAB_GAP;
     }
@@ -451,17 +449,17 @@ export const NodeGraphView: React.FC = () => {
               )),
             )}
 
-            {/* Page lane labels — one per unique page in this tab */}
+            {/* Domain lane labels — one per unique domain in this tab, indented under the tab */}
             {layout.windows.flatMap((w) =>
               w.tabs.flatMap((t) =>
                 t.pageLanes.map((p) => (
                   <text
-                    key={`${w.window.id}-${t.tab.id}-${p.pageKey}`}
-                    className="tk-ng__nodelabel"
+                    key={`${w.window.id}-${t.tab.id}-${p.domainKey}`}
+                    className="tk-ng__lane-label"
                     x={PAGE_LABEL_INDENT}
                     y={p.labelY}
                     fontSize={10}
-                    fill="#3f4147"
+                    fill="#5c6066"
                     fontFamily="ui-monospace, Menlo, monospace"
                     style={{ pointerEvents: 'none' }}
                   >
@@ -487,24 +485,38 @@ export const NodeGraphView: React.FC = () => {
               />
             ))}
 
-            {/* Visit nodes — dots only; the row IS the page, so per-node text
-                would be redundant. */}
+            {/* Visit nodes — dot at (at_time, domain-row) with the URL path
+                as its label to the right, so multiple visits to different
+                paths within the same domain are distinguishable. */}
             {layout.nodes.map((n) => (
-              <circle
+              <g
                 key={n.visit.id}
-                cx={n.cx}
-                cy={n.cy}
-                r={NODE_R}
-                fill={n.color.fill}
-                stroke={n.color.border}
-                strokeWidth={1.25}
-                style={{ cursor: 'pointer' }}
                 onMouseEnter={onNodeEnter(n)}
                 onMouseMove={onNodeMove}
                 onMouseLeave={onNodeLeave}
                 onClick={onNodeClick(n)}
+                style={{ cursor: 'pointer' }}
                 data-testid="tk-ng-node"
-              />
+              >
+                <circle
+                  cx={n.cx}
+                  cy={n.cy}
+                  r={NODE_R}
+                  fill={n.color.fill}
+                  stroke={n.color.border}
+                  strokeWidth={1.25}
+                />
+                <text
+                  x={n.cx + NODE_R + 4}
+                  y={n.cy + 3}
+                  fontSize={10}
+                  fill="#3f4147"
+                  className="tk-ng__nodelabel"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {shortLabel(n.page?.raw_url_first_seen || n.page?.normalized_url || '', n.page?.title)}
+                </text>
+              </g>
             ))}
           </svg>
         </div>

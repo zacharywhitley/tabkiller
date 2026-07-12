@@ -37,7 +37,10 @@ const PATH_COL_X = PAGE_LABEL_INDENT + 160;
 // Default zoom: timeline pane is this multiple of its container width so it
 // is naturally horizontally scrollable / pan-draggable out of the gate.
 const TIMELINE_ZOOM = 2;
-const CANVAS_MAX_HEIGHT_PX = 700;
+// Vertical size of the canvas: use up as much of the viewport as we can
+// past the dashboard header, the panel title, and the toolbar. Grows with
+// the browser window instead of being capped at a fixed 700 px.
+const CANVAS_MAX_HEIGHT_CSS = 'calc(100vh - 200px)';
 
 interface VisitNodeShape {
   visit: VisitNode;
@@ -286,7 +289,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflowY: 'auto',
     overflowX: 'hidden',
-    maxHeight: CANVAS_MAX_HEIGHT_PX,
+    maxHeight: CANVAS_MAX_HEIGHT_CSS,
+    minHeight: 300,
   },
   labelPane: {
     width: LABEL_PANE_WIDTH,

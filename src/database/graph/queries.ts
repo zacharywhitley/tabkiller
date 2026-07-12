@@ -806,8 +806,10 @@ export async function windowsWithVisitsBetween(
 
   const tabsByWindow = new Map<string, WindowTabVisitTab[]>();
   for (const tab of tabs) {
-    const tabVisits = visitsByTab.get(tab.id);
-    if (!tabVisits || tabVisits.length === 0) continue;
+    // Include the tab even if it has zero captured visits so counts
+    // between the Graph view and the Tabs view stay in sync. Tabs opened
+    // before the extension was running have no Visits but still exist.
+    const tabVisits = visitsByTab.get(tab.id) ?? [];
     tabVisits.sort((a, b) => a.visit.at_time - b.visit.at_time);
     const winEdge = (await g.outInterval(tab.id, 'in_window'))[0];
     if (!winEdge) continue;
@@ -820,8 +822,7 @@ export async function windowsWithVisitsBetween(
 
   const result: WindowTabVisitWindow[] = [];
   for (const window of windows) {
-    const winTabs = tabsByWindow.get(window.id);
-    if (!winTabs || winTabs.length === 0) continue;
+    const winTabs = tabsByWindow.get(window.id) ?? [];
     winTabs.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
     result.push({ window, tabs: winTabs });
   }

@@ -687,9 +687,12 @@ export interface OpenWindowGroup {
 
 /**
  * Right-now snapshot of currently-open tabs grouped by window. "Currently
- * open" is graph-derived — a Tab with `closed_at == null` that sits in a
- * Window with `closed_at == null`. If the SW missed a close event these
- * can be stale; reconciling against `chrome.tabs.query({})` is a follow-up.
+ * open" is a Tab with `closed_at == null`. Every such Tab is included —
+ * we don't require its `in_window` edge to point at an open Window,
+ * because reconciliation may have closed a duplicate Window without
+ * reparenting the Tab. To keep the display coherent we re-route each Tab
+ * to any live Window with the same `browser_window_id`, falling back to
+ * the referenced (possibly closed) Window when no live match exists.
  *
  * For each open Tab, the current page is the Visit with the greatest
  * `at_time` in that tab (typically its `ended_at == null` visit).
@@ -698,17 +701,26 @@ export async function openTabsGrouped(g: GraphStore): Promise<OpenWindowGroup[]>
   const openTabs = (await g.nodesOfType<TabNode>('Tab')).filter(
     (t) => t.closed_at == null,
   );
-  const openWindows = (await g.nodesOfType<WindowNode>('Window')).filter(
-    (w) => w.closed_at == null,
-  );
-  const windowsById = new Map(openWindows.map((w) => [w.id, w]));
+  const allWindows = await g.nodesOfType<WindowNode>('Window');
+  const windowsById = new Map(allWindows.map((w) => [w.id, w]));
+  const liveByBrowserWindowId = new Map<number, WindowNode>();
+  for (const w of allWindows) {
+    if (w.closed_at != null) continue;
+    const existing = liveByBrowserWindowId.get(w.browser_window_id);
+    if (!existing || existing.opened_at < w.opened_at) {
+      liveByBrowserWindowId.set(w.browser_window_id, w);
+    }
+  }
   const groups = new Map<string, OpenTabRow[]>();
+  const groupWindow = new Map<string, WindowNode>();
 
   for (const tab of openTabs) {
     const windowEdge = (await g.outInterval(tab.id, 'in_window'))[0];
     if (!windowEdge) continue;
-    const window_id = windowEdge.to_id;
-    if (!windowsById.has(window_id)) continue;
+    const referenced = windowsById.get(windowEdge.to_id);
+    if (!referenced) continue;
+    const resolvedWindow =
+      liveByBrowserWindowId.get(referenced.browser_window_id) ?? referenced;
 
     const visitEdges = await g.inInterval(tab.id, 'in_tab');
     let currentVisit: VisitNode | null = null;
@@ -727,19 +739,22 @@ export async function openTabsGrouped(g: GraphStore): Promise<OpenWindowGroup[]>
 
     const row: OpenTabRow = {
       tab,
-      window_id,
+      window_id: resolvedWindow.id,
       current_page: currentPage,
       current_visit: currentVisit,
     };
-    const bucket = groups.get(window_id);
+    const bucket = groups.get(resolvedWindow.id);
     if (bucket) bucket.push(row);
-    else groups.set(window_id, [row]);
+    else {
+      groups.set(resolvedWindow.id, [row]);
+      groupWindow.set(resolvedWindow.id, resolvedWindow);
+    }
   }
 
   const result: OpenWindowGroup[] = [];
   for (const [window_id, tabRows] of groups) {
     tabRows.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
-    const window = windowsById.get(window_id);
+    const window = groupWindow.get(window_id);
     if (window) result.push({ window, tabs: tabRows });
   }
   result.sort((a, b) => a.window.opened_at - b.window.opened_at);

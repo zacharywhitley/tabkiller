@@ -44,7 +44,8 @@ const styles = `
   .tk-dash__navbtn { display: block; width: 100%; text-align: left; padding: 10px 16px; background: transparent; border: none; color: #222; font-size: 14px; cursor: pointer; border-left: 3px solid transparent; }
   .tk-dash__navbtn:hover { background: rgba(0,0,0,0.04); }
   .tk-dash__navbtn.is-active { background: rgba(0,0,0,0.06); border-left-color: #4a76c4; font-weight: 600; }
-  .tk-dash__main { flex: 1; overflow: auto; padding: 20px 24px 40px; box-sizing: border-box; }
+  .tk-dash__main { flex: 1; overflow: auto; padding: 20px 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; }
+  .tk-dash__main > * { min-height: 0; }
   .tk-dash__error { color: #b1231d; background: #fbe3e1; border: 1px solid #eaa8a4; padding: 10px 12px; border-radius: 4px; font-size: 13px; margin: 8px 0 16px; }
   .tk-dash__scope { display: inline-block; padding: 4px 10px; background: #dfe8f7; color: #274168; border-radius: 12px; font-size: 12px; margin-right: 8px; }
   .tk-dash__scope button { background: transparent; border: none; color: inherit; margin-left: 6px; cursor: pointer; font-weight: 600; }

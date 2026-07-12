@@ -256,15 +256,13 @@ describe('AnalyticsEngine', () => {
       expect(results.productivity.recommendations).toBeInstanceOf(Array);
     });
 
-    it.skip('should calculate deep work and distraction periods', async () => {
-      // Skipped: the block-formation heuristic in AnalyticsEngine
-      // does not classify 30 scroll_events on a single domain as a
-      // "focused" block long enough to exceed deepWorkThreshold, so
-      // deepWorkPeriods stays at 0. Either the block formation needs
-      // to treat contiguous same-domain scrolls as one focused block,
-      // or the test's synthetic data needs tab-focus events. Left
-      // skipped rather than papered over — the analytics code deserves
-      // a real look, not a test tweak that hides the issue.
+    it('should calculate deep work and distraction periods', async () => {
+      // Was previously skipped: classifyTimeBlock treated any block
+      // over 10 minutes as idle, so long focused sessions were
+      // classified out from under the focused/deep-work path. Fixed
+      // in AnalyticsEngine.ts by making idleness depend on event
+      // density alone; unskipped here now that 30 scroll_events on
+      // one domain across ~30 min actually land as a focused block.
       const deepWorkEvents: BrowsingEvent[] = [];
       const startTime = Date.now();
       for (let i = 0; i < 30; i++) {

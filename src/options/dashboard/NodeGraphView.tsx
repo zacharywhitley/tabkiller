@@ -346,6 +346,7 @@ const darkOverrides = `
     .tk-ng__winband { fill: rgba(255,255,255,0.03) !important; }
     .tk-ng__edge--nav { stroke: #7ea3d9 !important; }
     .tk-ng__edge--open { stroke: #e2a24d !important; }
+    .tk-ng__tabsep { stroke: #3a3d42 !important; }
   }
 `;
 
@@ -708,6 +709,22 @@ export const NodeGraphView: React.FC = () => {
                   Window #{w.window.browser_window_id}
                   {w.window.closed_at != null ? ' (closed)' : ''} · {w.tabs.length} tab{w.tabs.length === 1 ? '' : 's'}
                 </text>
+                {/* Horizontal rule between tab rows — start at the top
+                    of every tab except the first so the first tab
+                    isn't split from the window header. */}
+                {w.tabs.slice(1).map((t) => (
+                  <line
+                    key={`${t.tab.id}-sep-label`}
+                    className="tk-ng__tabsep"
+                    x1={0}
+                    y1={t.y}
+                    x2={labelPaneWidth}
+                    y2={t.y}
+                    stroke="#e0e2e6"
+                    strokeWidth={1}
+                    shapeRendering="crispEdges"
+                  />
+                ))}
               </g>
             ))}
 
@@ -809,15 +826,29 @@ export const NodeGraphView: React.FC = () => {
                   across the timeline the same way it does across the label
                   pane. */}
               {layout.windows.map((w) => (
-                <rect
-                  key={`${w.window.id}-timeline-band`}
-                  className="tk-ng__winband"
-                  x={0}
-                  y={w.y}
-                  width={layout.width}
-                  height={w.height}
-                  fill="rgba(0,0,0,0.03)"
-                />
+                <g key={`${w.window.id}-timeline-band`}>
+                  <rect
+                    className="tk-ng__winband"
+                    x={0}
+                    y={w.y}
+                    width={layout.width}
+                    height={w.height}
+                    fill="rgba(0,0,0,0.03)"
+                  />
+                  {w.tabs.slice(1).map((t) => (
+                    <line
+                      key={`${t.tab.id}-sep-timeline`}
+                      className="tk-ng__tabsep"
+                      x1={0}
+                      y1={t.y}
+                      x2={layout.width}
+                      y2={t.y}
+                      stroke="#e0e2e6"
+                      strokeWidth={1}
+                      shapeRendering="crispEdges"
+                    />
+                  ))}
+                </g>
               ))}
 
               {edges.map((e) => (

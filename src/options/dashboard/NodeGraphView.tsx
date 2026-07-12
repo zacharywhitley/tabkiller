@@ -284,7 +284,6 @@ const styles: Record<string, React.CSSProperties> = {
   root: {
     display: 'flex',
     flexDirection: 'column',
-    height: '100%',
     minHeight: 0,
   },
   canvasOuter: {
@@ -294,8 +293,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflowY: 'auto',
     overflowX: 'hidden',
-    flex: 1,
-    minHeight: 0,
+    // Size to content — same length as the left labels SVG — but cap at
+    // the visible viewport so a huge graph scrolls internally instead of
+    // pushing the toolbar off the top of the page.
+    maxHeight: 'calc(100vh - 140px)',
   },
   labelPane: {
     width: LABEL_PANE_WIDTH,

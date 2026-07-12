@@ -268,15 +268,37 @@ describe('DigitalSignatureService', () => {
 describe('SecureKeyStorage', () => {
   let keyStorage: SecureKeyStorage;
   const store = new Map<string, unknown>();
-  const mockGet = jest.fn(async (key: string) => ({ [key]: store.get(key) }));
-  const mockSet = jest.fn(async (items: Record<string, unknown>) => {
+  const defaultGet = async (key: string) => ({ [key]: store.get(key) });
+  const defaultSet = async (items: Record<string, unknown>) => {
     for (const [k, v] of Object.entries(items)) store.set(k, v);
+  };
+  const defaultRemove = async (key: string) => { store.delete(key); };
+  const mockGet = jest.fn(defaultGet);
+  const mockSet = jest.fn(defaultSet);
+  const mockRemove = jest.fn(defaultRemove);
+  let originalChrome: unknown;
+
+  beforeAll(() => {
+    // Snapshot the setup.ts chrome mock so we can restore it after
+    // this block — later describe blocks (Integration Tests, etc.)
+    // still depend on the shared in-memory storage mock, and the
+    // mockResolvedValue overrides in later tests here would otherwise
+    // leak into them.
+    originalChrome = (global as any).chrome;
   });
-  const mockRemove = jest.fn(async (key: string) => { store.delete(key); });
+
+  afterAll(() => {
+    (global as any).chrome = originalChrome;
+  });
 
   beforeEach(async () => {
     jest.clearAllMocks();
     store.clear();
+    // Reset any per-test mockResolvedValue overrides to the shared
+    // in-memory default so tests don't affect each other.
+    mockGet.mockImplementation(defaultGet);
+    mockSet.mockImplementation(defaultSet);
+    mockRemove.mockImplementation(defaultRemove);
 
     // The chrome.storage.local mock has to be a real in-memory Promise
     // API — SecureKeyStorage.initialize awaits getFromExtensionStorage
@@ -296,15 +318,7 @@ describe('SecureKeyStorage', () => {
     await keyStorage.initialize('test-master-password');
   });
 
-  // Real round-trip fails integrity verification even though the same
-  // masterKey is in memory throughout — the encryption output isn't
-  // surviving the in-memory mock cleanly (likely a structuredClone
-  // vs. reference-preservation issue on the encryptedKey's typed
-  // array fields). The proper fix is either a stricter chrome-storage
-  // mock that JSON-round-trips values (matching real chrome behavior)
-  // or a serializer test that unpacks these fields directly. Skipping
-  // rather than pinning fake decryption byte-for-byte.
-  test.skip('should store and retrieve keys', async () => {
+  test('should store and retrieve keys', async () => {
     const testKey = generateRandomBytes(32);
     const keyId = 'test-key-1';
 
@@ -510,11 +524,7 @@ describe('SecurityAuditor', () => {
 });
 
 describe('Integration Tests', () => {
-  // Depends on SecureKeyStorage.retrieveKey succeeding, which fails
-  // for the same in-memory-mock reason as the store/retrieve test
-  // above. Skipped alongside it; will unblock automatically once the
-  // storage-mock encryption round-trip is fixed.
-  test.skip('should handle complete encryption workflow', async () => {
+  test('should handle complete encryption workflow', async () => {
     const cryptoService = new CryptographyService();
     await cryptoService.initialize('integration-test-password');
     

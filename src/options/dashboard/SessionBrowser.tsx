@@ -22,8 +22,14 @@ interface Props {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  header: { marginTop: 0, fontSize: 18, marginBottom: 12 },
-  card: { display: 'flex', gap: 12, alignItems: 'flex-start', padding: 12, marginBottom: 8, background: 'var(--tk-card-bg, #fff)', border: '1px solid var(--tk-card-border, #dcdfe4)', borderRadius: 6, cursor: 'pointer' },
+  // The dashboard main pane is flex-column with overflow:auto and forces
+  // min-height:0 on every direct child. Returning a bare fragment made
+  // every row a separate flex item, so once the content exceeded the
+  // pane height flex-shrink squashed the row heights while the text
+  // inside didn't shrink — cards overlapped their neighbors.
+  root: { display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' },
+  header: { marginTop: 0, fontSize: 18, marginBottom: 12, flexShrink: 0 },
+  card: { display: 'flex', gap: 12, alignItems: 'flex-start', padding: 12, marginBottom: 8, background: 'var(--tk-card-bg, #fff)', border: '1px solid var(--tk-card-border, #dcdfe4)', borderRadius: 6, cursor: 'pointer', flexShrink: 0 },
   meta: { flex: 1, minWidth: 0 },
   headline: { display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 },
   relative: { fontSize: 14, fontWeight: 600 },
@@ -119,33 +125,33 @@ export const SessionBrowser: React.FC<Props> = ({ onOpenSession }) => {
 
   if (error) {
     return (
-      <>
+      <div style={styles.root}>
         <h2 style={styles.header}>Sessions</h2>
         <div className="tk-dash__error">{error}</div>
-      </>
+      </div>
     );
   }
 
   if (rows === null) {
     return (
-      <>
+      <div style={styles.root}>
         <h2 style={styles.header}>Sessions</h2>
         <div style={styles.empty}>Loading…</div>
-      </>
+      </div>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <>
+      <div style={styles.root}>
         <h2 style={styles.header}>Sessions</h2>
         <div style={styles.empty}>No sessions captured yet. Browse for a bit and reload.</div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div style={styles.root}>
       <style>{darkOverrides}</style>
       <h2 style={styles.header}>Sessions ({rows.length})</h2>
       {rows.map((row) => {
@@ -210,7 +216,7 @@ export const SessionBrowser: React.FC<Props> = ({ onOpenSession }) => {
           </div>
         );
       })}
-    </>
+    </div>
   );
 };
 

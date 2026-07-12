@@ -344,7 +344,8 @@ const darkOverrides = `
     .tk-ng__nodelabel { fill: #cdd0d5 !important; }
     .tk-ng__winlabel { fill: #dadde0 !important; }
     .tk-ng__winband { fill: rgba(255,255,255,0.03) !important; }
-    .tk-ng__edge { stroke: #6a6d72 !important; }
+    .tk-ng__edge--nav { stroke: #7ea3d9 !important; }
+    .tk-ng__edge--open { stroke: #e2a24d !important; }
   }
 `;
 
@@ -822,13 +823,17 @@ export const NodeGraphView: React.FC = () => {
               {edges.map((e) => (
                 <path
                   key={e.key}
-                  className="tk-ng__edge"
+                  className={e.kind === 'opened_from' ? 'tk-ng__edge--open' : 'tk-ng__edge--nav'}
                   d={e.path}
                   fill="none"
-                  stroke="#888"
+                  // Both edges are solid now; kind is signaled by color
+                  // instead of dash pattern. Blue for intra-tab
+                  // navigation (continuous flow), amber for cross-tab
+                  // spawn (a branch into a new tab). Dark-mode overrides
+                  // live on the class names above.
+                  stroke={e.kind === 'opened_from' ? '#c66a2c' : '#4a76c4'}
                   strokeWidth={2}
-                  strokeDasharray={e.kind === 'opened_from' ? '4 3' : undefined}
-                  opacity={0.7}
+                  opacity={0.75}
                 />
               ))}
 

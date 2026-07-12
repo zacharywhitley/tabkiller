@@ -61,12 +61,14 @@ export interface IngestContext {
   findWindow: (windowId: string) => Promise<WindowNode | undefined>;
   findSearchQuery: (searchQueryId: string) => Promise<SearchQueryNode | undefined>;
   findTabByBrowserTabId: (browserTabId: number) => Promise<TabNode | undefined>;
+  findWindowByBrowserWindowId: (browserWindowId: number) => Promise<WindowNode | undefined>;
 
   // Query helpers for edge close-out.
   activeIntervalEdgesFromVisit: (visitId: string) => Promise<IntervalEdge[]>;
   activeInSessionEdgesForSession: (sessionId: string) => Promise<IntervalEdge[]>;
   activeInWindowEdgeForTab: (tabId: string) => Promise<IntervalEdge | undefined>;
   activeVisits: () => Promise<VisitNode[]>;
+  tabsInWindow: (windowId: string) => Promise<TabNode[]>;
 
   // Structured log sink for unknown/missing references.
   warn: (message: string, context: Record<string, unknown>) => void;
@@ -298,6 +300,8 @@ export async function transformEvent(
       return transformTabUpdated(event, ctx);
     case 'tab_removed':
       return transformTabRemoved(event, ctx);
+    case 'window_removed':
+      return transformWindowRemoved(event, ctx);
     case 'navigation_committed':
       return transformNavigationCommitted(event, ctx);
     case 'focus_transition':
@@ -477,6 +481,48 @@ export async function transformTabRemoved(
   // In-memory state cleanup: if the closing tab held the focus, clear it.
   if (previousVisitId && ctx.currentlyFocusedVisitId() === previousVisitId) {
     ctx.setCurrentlyFocusedVisitId(null);
+  }
+
+  return { nodes, edges };
+}
+
+// ---- window_removed ----
+
+export async function transformWindowRemoved(
+  event: BrowsingEvent,
+  ctx: IngestContext,
+): Promise<GraphWriteBatch> {
+  if (event.windowId === undefined) {
+    ctx.warn('window_removed missing windowId', { eventId: event.id });
+    return {};
+  }
+
+  const now = ctx.now();
+  const nodes: AnyNode[] = [];
+  const edges: AnyEdge[] = [];
+
+  // Find the Window node by browser_window_id. No dedicated index — the
+  // count is small at personal scale so a scan is fine.
+  const window = await ctx.findWindowByBrowserWindowId(event.windowId);
+  if (!window) return {};
+
+  if (window.closed_at == null) {
+    nodes.push({ ...window, recorded_at: now, closed_at: event.timestamp });
+  }
+
+  // Close every child Tab whose in_window edge points at this Window and
+  // is still open, plus its active in_window edge. Chrome already fires
+  // tabs.onRemoved for every tab in a closing window, so ordinarily each
+  // Tab closes on its own event, but doing it here too covers events
+  // that were lost while the SW was down.
+  for (const tab of await ctx.tabsInWindow(window.id)) {
+    if (tab.closed_at == null) {
+      nodes.push({ ...tab, recorded_at: now, closed_at: event.timestamp });
+    }
+    const inWindow = await ctx.activeInWindowEdgeForTab(tab.id);
+    if (inWindow && inWindow.valid_to === null) {
+      edges.push({ ...inWindow, recorded_at: now, valid_to: event.timestamp });
+    }
   }
 
   return { nodes, edges };

@@ -163,6 +163,14 @@ class BackgroundService {
       // Initialize current tabs
       await this.initializeCurrentTabs();
 
+      // Reconcile graph state against the browser's actual state.
+      // Tab/window close events that fired while the SW was down are lost,
+      // leaving Tab/Window nodes forever in the "open" state and blowing up
+      // the "open tabs" count in the dashboard. Fix that by asking the
+      // browser what's actually open and closing anything the graph still
+      // thinks is open that the browser no longer has.
+      await this.reconcileOpenTabsAndWindows();
+
       console.log('TabKiller background service initialized successfully');
     } catch (error) {
       console.error('Failed to initialize TabKiller background service:', error);
@@ -514,6 +522,24 @@ class BackgroundService {
         timestamp: Date.now()
       };
 
+      // Emit tab_removed to the outbox so the graph transformer sets
+      // Tab.closed_at. Without this, tabs never close in the graph and
+      // "open tab" counts climb without bound.
+      const outboxEvent: BrowsingEvent = {
+        id: generateEventId('tabr'),
+        timestamp: event.timestamp,
+        type: 'tab_removed',
+        tabId,
+        windowId: removeInfo.windowId,
+        sessionId: '',
+        metadata: {
+          isWindowClosing: removeInfo.isWindowClosing ?? false,
+        },
+      };
+      await this.sessionEmitter.noteActivity(outboxEvent.timestamp);
+      await this.outbox.storeEvent(outboxEvent);
+      this.graphIngest?.drainSoon();
+
       await this.processTabEvent(event);
     } catch (error) {
       console.error('Error handling tab removed:', error);
@@ -569,7 +595,22 @@ class BackgroundService {
       windowId,
       timestamp: Date.now()
     };
-    
+
+    // Emit window_removed to the outbox so the graph transformer sets
+    // Window.closed_at and closes any still-open child tabs. Without this
+    // Windows never close and "open window" counts climb indefinitely.
+    const outboxEvent: BrowsingEvent = {
+      id: generateEventId('winr'),
+      timestamp: event.timestamp,
+      type: 'window_removed',
+      windowId,
+      sessionId: '',
+      metadata: {},
+    };
+    await this.sessionEmitter.noteActivity(outboxEvent.timestamp);
+    await this.outbox.storeEvent(outboxEvent);
+    this.graphIngest?.drainSoon();
+
     await this.processWindowEvent(event);
   }
 
@@ -680,11 +721,75 @@ class BackgroundService {
    */
   private async initializeCurrentTabs(): Promise<void> {
     const tabs = await tabsAPI.getAll();
-    
+
     for (const tab of tabs) {
       if (tab.id) {
         await this.handleTabCreated(tab);
       }
+    }
+  }
+
+  /**
+   * Ghost-state cleanup. Any Tab or Window node in the graph with
+   * closed_at == null but no matching entry in the actual browser is a
+   * close event we missed while the SW was down; emit a synthetic
+   * tab_removed / window_removed to close them out. Runs once per SW
+   * startup after the graph is fully initialized.
+   */
+  private async reconcileOpenTabsAndWindows(): Promise<void> {
+    if (!this.graphIngest) return;
+    try {
+      const [liveTabs, liveWindows] = await Promise.all([
+        this.browser.tabs.query({}),
+        this.browser.windows.getAll(),
+      ]);
+      const liveTabIds = new Set(liveTabs.map((t) => t.id).filter((id): id is number => id !== undefined));
+      const liveWindowIds = new Set(liveWindows.map((w) => w.id).filter((id): id is number => id !== undefined));
+
+      const graph = new GraphStore(this.sessionStorageEngine.getDatabase());
+      const now = Date.now();
+      let ghostTabs = 0;
+      let ghostWindows = 0;
+
+      const allTabs = await graph.nodesOfType<import('../database/graph/types').TabNode>('Tab');
+      for (const tab of allTabs) {
+        if (tab.closed_at != null) continue;
+        if (liveTabIds.has(tab.browser_tab_id)) continue;
+        await this.outbox.storeEvent({
+          id: generateEventId('tabr-recon'),
+          timestamp: now,
+          type: 'tab_removed',
+          tabId: tab.browser_tab_id,
+          windowId: undefined,
+          sessionId: '',
+          metadata: { reconciled: true },
+        } as BrowsingEvent);
+        ghostTabs++;
+      }
+
+      const allWindows = await graph.nodesOfType<import('../database/graph/types').WindowNode>('Window');
+      for (const win of allWindows) {
+        if (win.closed_at != null) continue;
+        if (liveWindowIds.has(win.browser_window_id)) continue;
+        await this.outbox.storeEvent({
+          id: generateEventId('winr-recon'),
+          timestamp: now,
+          type: 'window_removed',
+          windowId: win.browser_window_id,
+          sessionId: '',
+          metadata: { reconciled: true },
+        } as BrowsingEvent);
+        ghostWindows++;
+      }
+
+      if (ghostTabs > 0 || ghostWindows > 0) {
+        console.log(
+          `TabKiller reconcile: closed ${ghostTabs} ghost tab(s) and ${ghostWindows} ghost window(s)`,
+        );
+        this.graphIngest.drainSoon();
+      }
+    } catch (error) {
+      console.warn('Ghost reconciliation failed:', error);
     }
   }
 

@@ -333,6 +333,20 @@ export class GraphIngest {
         () => this.graph.nodeByBrowserTabId(browserTabId),
         'Tab',
       ),
+      findWindowByBrowserWindowId: async (browserWindowId) => {
+        // No dedicated index — scan Window nodes and match by browser_window_id.
+        const windows = await this.graph.nodesOfType<WindowNode>('Window');
+        return windows.find((w) => w.browser_window_id === browserWindowId);
+      },
+      tabsInWindow: async (windowId) => {
+        const inWindowEdges = await this.graph.inInterval(windowId, 'in_window');
+        const out: TabNode[] = [];
+        for (const e of inWindowEdges) {
+          const t = await this.graph.getNode<TabNode>(e.from_id);
+          if (t) out.push(t);
+        }
+        return out;
+      },
 
       activeIntervalEdgesFromVisit: async (visitId) => {
         const [ofPage, inTab, inSession] = await Promise.all([

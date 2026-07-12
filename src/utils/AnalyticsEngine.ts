@@ -158,8 +158,11 @@ export class AnalyticsEngine {
     const domainDiversity = block.domains.length;
     const switchRate = (block.tabSwitches + block.windowSwitches) / (duration / 60000);
 
-    // Idle: very low activity
-    if (eventDensity < 0.1 || duration > 600000) { // > 10 minutes
+    // Idle: very low activity (fewer than 0.1 events/minute).
+    // Note: duration alone is not a sign of idleness — the block-forming
+    // step already splits blocks whenever consecutive events are more than
+    // 5 minutes apart, so a long block implies steady activity within it.
+    if (eventDensity < 0.1) {
       return 'idle';
     }
 

@@ -51,10 +51,12 @@ interface EdgeShape {
 }
 
 interface PageLane {
+  laneKey: string;
   domainKey: string;
   labelY: number;
   y: number;
-  label: string;
+  path: string;
+  isDomainHeader: boolean;
   visitCount: number;
 }
 
@@ -84,16 +86,20 @@ interface Layout {
 }
 
 function shortLabel(rawUrl: string, title: string | null | undefined): string {
-  let path = '';
-  try {
-    const parsed = new URL(rawUrl);
-    path = (parsed.pathname || '') + (parsed.search || '');
-    if (path === '/' || path === '') path = '';
-  } catch {
-    // fallthrough
-  }
+  const path = urlPath(rawUrl);
   const preferred = path || title || rawUrl;
   return preferred.length > 44 ? preferred.slice(0, 41) + '…' : preferred;
+}
+
+function urlPath(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const p = (parsed.pathname || '') + (parsed.search || '');
+    if (p === '' || p === '/') return '/';
+    return p.length > 60 ? p.slice(0, 57) + '…' : p;
+  } catch {
+    return '';
+  }
 }
 
 function computeLayout(
@@ -120,52 +126,83 @@ function computeLayout(
       const tabY = tabCursor;
       const tabLabelY = tabY + 12;
 
-      // Group this tab's visits by domain (indented under the tab). Row
-      // order = first-visit-of-that-domain-in-this-tab, so the tab reads
-      // top-to-bottom as "first domain you were on ... last domain you
-      // were on." Visits to the same domain but different paths sit on
-      // the same row; each dot carries its path as a per-node label.
-      const laneByDomain = new Map<string, PageLane>();
-      const laneOrder: string[] = [];
-      const laneStartY = tabY + TAB_HEADER_HEIGHT;
+      // Within a Tab: one row per unique Page, grouped by domain.
+      // Sort key = (domain, first-visit-time-in-this-tab).
+      // The FIRST row of each domain group carries the domain label as
+      // its left indent; subsequent rows in the same domain leave the
+      // domain-label column blank so pages read as a visual cluster.
+      type Bucket = {
+        laneKey: string;
+        domainKey: string;
+        path: string;
+        firstSeenInTab: number;
+        visits: { visit: VisitNode; page: PageNode | null }[];
+      };
+      const buckets = new Map<string, Bucket>();
       for (const { visit, page } of t.visits) {
         const url = page?.raw_url_first_seen || page?.normalized_url || '';
         const domain = url ? hostnameOf(url) : '(no page)';
-        let lane = laneByDomain.get(domain);
-        if (!lane) {
-          const laneY = laneStartY + laneOrder.length * PAGE_LANE_HEIGHT + PAGE_LANE_HEIGHT / 2;
-          lane = {
+        const path = urlPath(url) || '/';
+        const laneKey = `${domain}::${path}`;
+        let bucket = buckets.get(laneKey);
+        if (!bucket) {
+          bucket = {
+            laneKey,
             domainKey: domain,
-            y: laneY,
-            labelY: laneY + 3,
-            label: domain,
-            visitCount: 0,
+            path,
+            firstSeenInTab: visit.at_time,
+            visits: [],
           };
-          laneByDomain.set(domain, lane);
-          laneOrder.push(domain);
+          buckets.set(laneKey, bucket);
         }
-        lane.visitCount += 1;
-        const node: VisitNodeShape = {
-          visit,
-          page,
-          cx: timeToX(visit.at_time),
-          cy: lane.y,
-          color: colorForDomain(domain),
-          domain,
-          tabId: t.tab.id,
-          windowId: w.window.id,
-        };
-        nodes.push(node);
-        nodesById.set(visit.id, node);
+        bucket.visits.push({ visit, page });
+        bucket.firstSeenInTab = Math.min(bucket.firstSeenInTab, visit.at_time);
+      }
+      const orderedBuckets = Array.from(buckets.values()).sort((a, b) => {
+        if (a.domainKey !== b.domainKey) return a.domainKey < b.domainKey ? -1 : 1;
+        return a.firstSeenInTab - b.firstSeenInTab;
+      });
+
+      const pageLanes: PageLane[] = [];
+      const laneStartY = tabY + TAB_HEADER_HEIGHT;
+      let seenDomain: string | null = null;
+      for (let i = 0; i < orderedBuckets.length; i++) {
+        const bucket = orderedBuckets[i];
+        const laneY = laneStartY + i * PAGE_LANE_HEIGHT + PAGE_LANE_HEIGHT / 2;
+        const isDomainHeader = bucket.domainKey !== seenDomain;
+        seenDomain = bucket.domainKey;
+        pageLanes.push({
+          laneKey: bucket.laneKey,
+          domainKey: bucket.domainKey,
+          path: bucket.path,
+          isDomainHeader,
+          y: laneY,
+          labelY: laneY + 3,
+          visitCount: bucket.visits.length,
+        });
+        for (const { visit, page } of bucket.visits) {
+          const node: VisitNodeShape = {
+            visit,
+            page,
+            cx: timeToX(visit.at_time),
+            cy: laneY,
+            color: colorForDomain(bucket.domainKey),
+            domain: bucket.domainKey,
+            tabId: t.tab.id,
+            windowId: w.window.id,
+          };
+          nodes.push(node);
+          nodesById.set(visit.id, node);
+        }
       }
 
-      const tabHeight = TAB_HEADER_HEIGHT + laneOrder.length * PAGE_LANE_HEIGHT;
+      const tabHeight = TAB_HEADER_HEIGHT + orderedBuckets.length * PAGE_LANE_HEIGHT;
       tabBands.push({
         tab: t.tab,
         y: tabY,
         height: tabHeight,
         labelY: tabLabelY,
-        pageLanes: laneOrder.map((k) => laneByDomain.get(k)!),
+        pageLanes,
       });
       tabCursor += tabHeight + TAB_GAP;
     }
@@ -449,24 +486,41 @@ export const NodeGraphView: React.FC = () => {
               )),
             )}
 
-            {/* Domain lane labels — one per unique domain in this tab, indented under the tab */}
+            {/* Page lane labels — one per unique page in this tab. Domain
+                appears in a left column only on the first row of its
+                cluster so pages under the same domain read as a group. */}
             {layout.windows.flatMap((w) =>
               w.tabs.flatMap((t) =>
-                t.pageLanes.map((p) => (
+                t.pageLanes.flatMap((p) => [
+                  p.isDomainHeader ? (
+                    <text
+                      key={`${w.window.id}-${t.tab.id}-${p.laneKey}-dom`}
+                      className="tk-ng__lane-label"
+                      x={PAGE_LABEL_INDENT}
+                      y={p.labelY}
+                      fontSize={10}
+                      fontWeight={600}
+                      fill="#5c6066"
+                      fontFamily="ui-monospace, Menlo, monospace"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {p.domainKey}
+                    </text>
+                  ) : null,
                   <text
-                    key={`${w.window.id}-${t.tab.id}-${p.domainKey}`}
-                    className="tk-ng__lane-label"
-                    x={PAGE_LABEL_INDENT}
+                    key={`${w.window.id}-${t.tab.id}-${p.laneKey}-path`}
+                    className="tk-ng__nodelabel"
+                    x={PAGE_LABEL_INDENT + 160}
                     y={p.labelY}
                     fontSize={10}
-                    fill="#5c6066"
+                    fill="#3f4147"
                     fontFamily="ui-monospace, Menlo, monospace"
                     style={{ pointerEvents: 'none' }}
                   >
-                    {p.label}
+                    {p.path}
                     {p.visitCount > 1 ? ` (${p.visitCount})` : ''}
-                  </text>
-                )),
+                  </text>,
+                ]),
               ),
             )}
 
@@ -485,38 +539,24 @@ export const NodeGraphView: React.FC = () => {
               />
             ))}
 
-            {/* Visit nodes — dot at (at_time, domain-row) with the URL path
-                as its label to the right, so multiple visits to different
-                paths within the same domain are distinguishable. */}
+            {/* Visit nodes — dots only; the row IS the page, so per-node
+                text would repeat the row's path label. */}
             {layout.nodes.map((n) => (
-              <g
+              <circle
                 key={n.visit.id}
+                cx={n.cx}
+                cy={n.cy}
+                r={NODE_R}
+                fill={n.color.fill}
+                stroke={n.color.border}
+                strokeWidth={1.25}
+                style={{ cursor: 'pointer' }}
                 onMouseEnter={onNodeEnter(n)}
                 onMouseMove={onNodeMove}
                 onMouseLeave={onNodeLeave}
                 onClick={onNodeClick(n)}
-                style={{ cursor: 'pointer' }}
                 data-testid="tk-ng-node"
-              >
-                <circle
-                  cx={n.cx}
-                  cy={n.cy}
-                  r={NODE_R}
-                  fill={n.color.fill}
-                  stroke={n.color.border}
-                  strokeWidth={1.25}
-                />
-                <text
-                  x={n.cx + NODE_R + 4}
-                  y={n.cy + 3}
-                  fontSize={10}
-                  fill="#3f4147"
-                  className="tk-ng__nodelabel"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {shortLabel(n.page?.raw_url_first_seen || n.page?.normalized_url || '', n.page?.title)}
-                </text>
-              </g>
+              />
             ))}
           </svg>
         </div>

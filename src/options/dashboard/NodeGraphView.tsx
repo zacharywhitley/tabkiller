@@ -37,10 +37,9 @@ const PATH_COL_X = PAGE_LABEL_INDENT + 160;
 // Default zoom: timeline pane is this multiple of its container width so it
 // is naturally horizontally scrollable / pan-draggable out of the gate.
 const TIMELINE_ZOOM = 2;
-// Vertical size of the canvas: use up as much of the viewport as we can
-// past the dashboard header, the panel title, and the toolbar. Grows with
-// the browser window instead of being capped at a fixed 700 px.
-const CANVAS_MAX_HEIGHT_CSS = 'calc(100vh - 200px)';
+// Vertical layout uses flex — the canvas grows to fill whatever the
+// dashboard main pane has after the panel title and toolbar. No fragile
+// vh math.
 
 interface VisitNodeShape {
   visit: VisitNode;
@@ -282,6 +281,12 @@ const styles: Record<string, React.CSSProperties> = {
   select: { padding: '4px 8px', fontSize: 12 },
   // Outer scroll wrapper: vertical scroll wraps both panes so they scroll
   // vertically in sync.
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    minHeight: 0,
+  },
   canvasOuter: {
     background: 'var(--tk-canvas-bg, #fff)',
     border: '1px solid #ccd0d5',
@@ -289,12 +294,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflowY: 'auto',
     overflowX: 'hidden',
-    // Force the pane to actually take up this height, not just cap it.
-    // Otherwise a short graph shrinks to content height and leaves a gap
-    // at the bottom of the browser window even when there's more content
-    // waiting.
-    height: CANVAS_MAX_HEIGHT_CSS,
-    minHeight: 300,
+    flex: 1,
+    minHeight: 0,
   },
   labelPane: {
     width: LABEL_PANE_WIDTH,
@@ -495,7 +496,7 @@ export const NodeGraphView: React.FC = () => {
   const totalTabs = data?.reduce((n, w) => n + w.tabs.length, 0) ?? 0;
 
   return (
-    <>
+    <div style={styles.root}>
       <style>{darkOverrides}</style>
       <h2 style={styles.header}>Graph</h2>
       <div style={styles.toolbar}>
@@ -702,7 +703,7 @@ export const NodeGraphView: React.FC = () => {
           <div style={{ opacity: 0.7 }}>transition: {hover.node.visit.transition}</div>
         </div>
       )}
-    </>
+    </div>
   );
 };
 

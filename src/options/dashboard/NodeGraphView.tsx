@@ -39,7 +39,11 @@ const DEFAULT_LABEL_PANE_WIDTH = 300;
 const MIN_LABEL_PANE_WIDTH = 140;
 const MAX_LABEL_PANE_WIDTH = 720;
 const DOMAIN_COL_X = PAGE_LABEL_INDENT;
-const PATH_COL_X = PAGE_LABEL_INDENT + 100;
+// Room for domains up to ~25 chars at 10px monospace before they
+// bleed into the path column. news.ycombinator.com (20 chars ≈ 120px)
+// was overrunning the previous 100px slot and reading as two paths
+// stacked on the same row.
+const PATH_COL_X = PAGE_LABEL_INDENT + 155;
 const SPLITTER_WIDTH = 4;
 const LABEL_PANE_WIDTH_STORAGE_KEY = 'tabkiller.dashboard.graph.labelPaneWidth';
 // Default zoom: timeline pane is this multiple of its container width so it

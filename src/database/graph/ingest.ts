@@ -329,14 +329,41 @@ export class GraphIngest {
       findSession: (sessionId) => this.graph.getNode<SessionNode>(sessionId),
       findWindow: (windowId) => this.graph.getNode<WindowNode>(windowId),
       findSearchQuery: (searchQueryId) => this.graph.getNode<SearchQueryNode>(searchQueryId),
-      findTabByBrowserTabId: (browserTabId) => this.findNode<TabNode>(
-        () => this.graph.nodeByBrowserTabId(browserTabId),
-        'Tab',
-      ),
+      findTabByBrowserTabId: async (browserTabId) => {
+        // Scan all Tab nodes and prefer an open one. The identity index
+        // returns only the first match by browser_tab_id, which may be a
+        // closed duplicate created before the idempotency fix landed —
+        // making the transformer think no open Tab exists and creating
+        // yet another one on top. Scanning is fine at personal scale.
+        const tabs = await this.graph.nodesOfType<TabNode>('Tab');
+        let openMatch: TabNode | undefined;
+        let closedMatch: TabNode | undefined;
+        for (const t of tabs) {
+          if (t.browser_tab_id !== browserTabId) continue;
+          if (t.closed_at == null) {
+            if (!openMatch || openMatch.opened_at < t.opened_at) openMatch = t;
+          } else if (!closedMatch || closedMatch.opened_at < t.opened_at) {
+            closedMatch = t;
+          }
+        }
+        return openMatch ?? closedMatch;
+      },
       findWindowByBrowserWindowId: async (browserWindowId) => {
-        // No dedicated index — scan Window nodes and match by browser_window_id.
+        // Same discipline as findTabByBrowserTabId: prefer an open window
+        // if one exists so transformer idempotency isn't defeated by a
+        // stale closed duplicate.
         const windows = await this.graph.nodesOfType<WindowNode>('Window');
-        return windows.find((w) => w.browser_window_id === browserWindowId);
+        let openMatch: WindowNode | undefined;
+        let closedMatch: WindowNode | undefined;
+        for (const w of windows) {
+          if (w.browser_window_id !== browserWindowId) continue;
+          if (w.closed_at == null) {
+            if (!openMatch || openMatch.opened_at < w.opened_at) openMatch = w;
+          } else if (!closedMatch || closedMatch.opened_at < w.opened_at) {
+            closedMatch = w;
+          }
+        }
+        return openMatch ?? closedMatch;
       },
       tabsInWindow: async (windowId) => {
         const inWindowEdges = await this.graph.inInterval(windowId, 'in_window');

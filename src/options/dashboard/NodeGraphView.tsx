@@ -284,6 +284,7 @@ const styles: Record<string, React.CSSProperties> = {
   root: {
     display: 'flex',
     flexDirection: 'column',
+    width: '100%',
   },
   canvasOuter: {
     background: 'var(--tk-canvas-bg, #fff)',
@@ -292,6 +293,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflowY: 'auto',
     overflowX: 'hidden',
+    // Give the canvas nearly the full viewport height, subtracting a
+    // fixed budget for the panel title and the toolbar. Bigger than the
+    // previous `100vh - 200px` (which measured out to ~662 for the user
+    // — way too short) and smaller than the browser chrome would allow.
+    height: 'calc(100vh - 100px)',
   },
   labelPane: {
     width: LABEL_PANE_WIDTH,
@@ -439,25 +445,6 @@ export const NodeGraphView: React.FC = () => {
   const dragStateRef = React.useRef<{ startX: number; startScroll: number } | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  // Explicitly measure how much vertical space is available for the canvas
-  // — the flex chain from `.tk-dash` through `.tk-dash__main` through this
-  // view's root wasn't reliably propagating height (fighting `overflow`
-  // and the varying viewport). Compute the height directly: viewport
-  // bottom minus the top of the canvas.
-  const canvasOuterRef = React.useRef<HTMLDivElement | null>(null);
-  const [canvasPixelHeight, setCanvasPixelHeight] = useState<number>(600);
-  useEffect(() => {
-    const measure = () => {
-      const el = canvasOuterRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const available = Math.max(300, window.innerHeight - rect.top - 16);
-      setCanvasPixelHeight(available);
-    };
-    measure();
-    globalThis.addEventListener('resize', measure);
-    return () => globalThis.removeEventListener('resize', measure);
-  }, [data, layout]);
 
   const onTimelineMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const pane = timelinePaneRef.current;
@@ -535,9 +522,8 @@ export const NodeGraphView: React.FC = () => {
 
       {layout && data && data.length > 0 && (
         <div
-          ref={canvasOuterRef}
           className="tk-ng__canvas-outer"
-          style={{ ...styles.canvasOuter, height: canvasPixelHeight }}
+          style={styles.canvasOuter}
         >
           {/* Left pane: window / tab / domain / path labels, fixed width,
               no horizontal scroll — stays visible while the timeline pans. */}

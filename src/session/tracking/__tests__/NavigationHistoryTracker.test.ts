@@ -417,33 +417,40 @@ describe('NavigationHistoryTracker', () => {
       expect(examplePattern?.domains).toContain('example.com');
     });
 
-    // Same synchronous-tick issue: pattern avgTimeSpent aggregates
-    // entry.timeOnPage, which stays 0 under synchronous execution
-    // so avgTimeSpent stays 0 too. Skipped rather than injecting
-    // fake timers just to make the assertion pass.
-    it.skip('should update pattern statistics', async () => {
-      // Create navigation with time on page
-      await tracker.processTabEvent({
-        type: 'created',
-        tabId: 1,
-        windowId: 1,
-        timestamp: Date.now(),
-        data: { url: 'https://example.com', title: 'Example' }
-      });
+    it('should update pattern statistics', async () => {
+      // Force wall-clock advance between events so the previous
+      // entry's timeOnPage delta is nonzero. jest.useFakeTimers +
+      // setSystemTime is the deterministic version of the sleep the
+      // synchronous test would otherwise need.
+      jest.useFakeTimers();
+      try {
+        jest.setSystemTime(new Date(1_000_000));
 
-      // Simulate time passage and finalization
-      await new Promise(resolve => setTimeout(resolve, 10));
-      await tracker.processTabEvent({
-        type: 'updated',
-        tabId: 1,
-        windowId: 1,
-        timestamp: Date.now() + 1000,
-        data: { url: 'https://other.com', title: 'Other' }
-      });
+        await tracker.processTabEvent({
+          type: 'created',
+          tabId: 1,
+          windowId: 1,
+          timestamp: Date.now(),
+          data: { url: 'https://example.com', title: 'Example' }
+        });
 
-      const patterns = tracker.getNavigationPatterns();
-      const examplePattern = patterns.find(p => p.pattern === 'example.com');
-      expect(examplePattern?.avgTimeSpent).toBeGreaterThan(0);
+        jest.setSystemTime(new Date(1_000_000 + 5000));
+
+        await tracker.processTabEvent({
+          type: 'updated',
+          tabId: 1,
+          windowId: 1,
+          timestamp: Date.now(),
+          data: { url: 'https://other.com', title: 'Other' }
+        });
+
+        const patterns = tracker.getNavigationPatterns();
+        const examplePattern = patterns.find(p => p.pattern === 'example.com');
+        expect(examplePattern).toBeDefined();
+        expect(examplePattern?.avgTimeSpent).toBeGreaterThan(0);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -533,18 +540,16 @@ describe('NavigationHistoryTracker', () => {
       expect(stats.newestEntry).toBeGreaterThanOrEqual(stats.oldestEntry);
     });
 
-    // recordBrowsingEvent's page_loaded path attaches loadTime to
-    // entries by URL match; the entries created in this describe
-    // block's beforeEach may not match the URLs used here in a way
-    // that sets loadTime on both. Real fix is to align the fixture,
-    // not paper over — skipped.
-    it.skip('should calculate load time averages', async () => {
-      // Add performance data to some entries
+    it('should calculate load time averages', async () => {
+      // updatePageLoadMetrics only attaches loadTime when the event's
+      // URL matches the tab's most recent entry. The beforeEach leaves
+      // tab 1's last entry at example.com/page2 and tab 2's at
+      // github.com, so target those URLs directly.
       await tracker.recordBrowsingEvent({
         type: 'page_loaded',
         timestamp: Date.now(),
         tabId: 1,
-        url: 'https://example.com',
+        url: 'https://example.com/page2',
         metadata: { loadTime: 1000 }
       });
 
@@ -552,7 +557,7 @@ describe('NavigationHistoryTracker', () => {
         type: 'page_loaded',
         timestamp: Date.now(),
         tabId: 2,
-        url: 'https://test.com',
+        url: 'https://github.com',
         metadata: { loadTime: 2000 }
       });
 
@@ -566,12 +571,7 @@ describe('NavigationHistoryTracker', () => {
       await tracker.initialize();
     });
 
-    // Real code gap: performCleanup only prunes by retentionPeriod,
-    // not by count. updateMaxEntries stores the new limit but the
-    // cleanup path never enforces "at most N entries". Either
-    // cleanup needs a size-based branch or updateMaxEntries needs
-    // to trim in place. Skipped until the code side is decided.
-    it.skip('should update max entries limit', async () => {
+    it('should update max entries limit', async () => {
       await tracker.updateMaxEntries(500);
 
       // Create more entries than the new limit
@@ -585,7 +585,8 @@ describe('NavigationHistoryTracker', () => {
         });
       }
 
-      // Should trigger cleanup
+      // performCleanup now enforces the size cap in addition to the
+      // retention window.
       const history = tracker.getHistory();
       expect(history.length).toBeLessThanOrEqual(500);
     });
@@ -617,21 +618,29 @@ describe('NavigationHistoryTracker', () => {
       expect(history[0].title).toBe('Synced Page');
     });
 
-    // Default retentionPeriod is 30 days; the test writes a 48h-old
-     // entry and expects it to be pruned, which requires a 24h
-     // retention config the test never sets. Needs the tracker to be
-     // constructed with { retentionPeriod: 24*60*60*1000 } in this
-     // block. Skipped rather than reconfiguring blindly.
-    it.skip('should perform cleanup of old entries', async () => {
-      // Create entries with old timestamps
-      const oldTimestamp = Date.now() - (48 * 60 * 60 * 1000); // 48 hours ago
+    it('should perform cleanup of old entries', async () => {
+      // The outer beforeEach configures retentionPeriod = 24h.
+      // processTabEvent stamps entries with Date.now(), not
+      // tabEvent.timestamp, so route through processSyncUpdate to
+      // inject an entry whose timestamp actually is 48h in the past.
+      const oldTimestamp = Date.now() - (48 * 60 * 60 * 1000);
 
-      await tracker.processTabEvent({
-        type: 'created',
-        tabId: 1,
-        windowId: 1,
-        timestamp: oldTimestamp,
-        data: { url: 'https://old.com', title: 'Old Page' }
+      await tracker.processSyncUpdate({
+        type: 'navigation_entry',
+        entry: {
+          id: 'legacy_old_entry',
+          tabId: 1,
+          windowId: 1,
+          url: 'https://old.com',
+          title: 'Old Page',
+          timestamp: oldTimestamp,
+          transitionType: 'link',
+          navigationIndex: 0,
+          isMainFrame: true,
+          isReload: false,
+          isBackForward: false,
+          userGesture: true
+        }
       });
 
       // Force cleanup

@@ -281,9 +281,14 @@ const styles: Record<string, React.CSSProperties> = {
   select: { padding: '4px 8px', fontSize: 12 },
   // Outer scroll wrapper: vertical scroll wraps both panes so they scroll
   // vertically in sync.
+  // NodeGraphView is a flex column that fills its parent (.tk-dash__main
+  // is itself a flex column, so `flex: 1` chains through). The h2 and
+  // toolbar keep their natural heights, and `canvasOuter` takes flex: 1
+  // to consume everything that's left down to the bottom of the pane.
   root: {
     display: 'flex',
     flexDirection: 'column',
+    flex: 1,
     minHeight: 0,
   },
   canvasOuter: {
@@ -293,10 +298,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflowY: 'auto',
     overflowX: 'hidden',
-    // Size to content — same length as the left labels SVG — but cap at
-    // the visible viewport so a huge graph scrolls internally instead of
-    // pushing the toolbar off the top of the page.
-    maxHeight: 'calc(100vh - 140px)',
+    flex: 1,
+    minHeight: 0,
   },
   labelPane: {
     width: LABEL_PANE_WIDTH,

@@ -788,11 +788,6 @@ export const NodeGraphView: React.FC = () => {
             onMouseLeave={endDrag}
           >
             <svg width={layout.width} height={layout.height} data-testid="tk-ng-svg">
-              <defs>
-                <marker id="tk-ng-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#666" />
-                </marker>
-              </defs>
 
               {layout.ticks.map((t) => (
                 <text
@@ -833,7 +828,6 @@ export const NodeGraphView: React.FC = () => {
                   stroke="#888"
                   strokeWidth={2}
                   strokeDasharray={e.kind === 'opened_from' ? '4 3' : undefined}
-                  markerEnd="url(#tk-ng-arrow)"
                   opacity={0.7}
                 />
               ))}

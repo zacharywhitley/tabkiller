@@ -806,13 +806,15 @@ export async function windowsWithVisitsBetween(
 
   const tabsByWindow = new Map<string, WindowTabVisitTab[]>();
   for (const tab of tabs) {
-    // Only include tabs that actually have captured browsing to show. A
-    // tab with zero visits produces an empty label lane with no dots,
-    // which reads as noise. Users looking at the Graph view want to see
-    // where they've *been* — not every tab id. (The Tabs view is the
-    // right place to see currently-open tabs regardless of activity.)
-    const tabVisits = visitsByTab.get(tab.id);
-    if (!tabVisits || tabVisits.length === 0) continue;
+    const tabVisits = visitsByTab.get(tab.id) ?? [];
+    // Include a tab if it's currently open (so the count matches the
+    // Tabs view) OR if it's closed but has visits worth showing.
+    // Tabs open before the SW came online, extension pages, chrome://
+    // navigations, etc. produce no Visit nodes but still exist. The
+    // renderer collapses them to a header-only row so an "empty" open
+    // tab isn't visually noisy.
+    const isOpen = tab.closed_at == null;
+    if (!isOpen && tabVisits.length === 0) continue;
     tabVisits.sort((a, b) => a.visit.at_time - b.visit.at_time);
     const winEdge = (await g.outInterval(tab.id, 'in_window'))[0];
     if (!winEdge) continue;

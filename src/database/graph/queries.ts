@@ -806,15 +806,13 @@ export async function windowsWithVisitsBetween(
 
   const tabsByWindow = new Map<string, WindowTabVisitTab[]>();
   for (const tab of tabs) {
-    const tabVisits = visitsByTab.get(tab.id) ?? [];
-    // A tab is graph-worthy if it is currently open (matches the Tabs
-    // view's semantics for "tabs I have") OR if it has at least one
-    // captured visit in the range (historical context — a closed tab
-    // that hosted something we care about). This keeps the count aligned
-    // with what the user sees in the Tabs view without pulling in every
-    // closed tab whose lifetime happens to overlap the range.
-    const isOpen = tab.closed_at == null;
-    if (!isOpen && tabVisits.length === 0) continue;
+    // Only include tabs that actually have captured browsing to show. A
+    // tab with zero visits produces an empty label lane with no dots,
+    // which reads as noise. Users looking at the Graph view want to see
+    // where they've *been* — not every tab id. (The Tabs view is the
+    // right place to see currently-open tabs regardless of activity.)
+    const tabVisits = visitsByTab.get(tab.id);
+    if (!tabVisits || tabVisits.length === 0) continue;
     tabVisits.sort((a, b) => a.visit.at_time - b.visit.at_time);
     const winEdge = (await g.outInterval(tab.id, 'in_window'))[0];
     if (!winEdge) continue;
@@ -827,8 +825,8 @@ export async function windowsWithVisitsBetween(
 
   const result: WindowTabVisitWindow[] = [];
   for (const window of windows) {
-    const winTabs = tabsByWindow.get(window.id) ?? [];
-    if (winTabs.length === 0 && window.closed_at != null) continue;
+    const winTabs = tabsByWindow.get(window.id);
+    if (!winTabs || winTabs.length === 0) continue;
     winTabs.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
     result.push({ window, tabs: winTabs });
   }

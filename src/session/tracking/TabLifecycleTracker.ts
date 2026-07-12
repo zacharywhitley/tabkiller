@@ -653,13 +653,42 @@ export class TabLifecycleTracker {
 
   /**
    * Process external tab events (for integration with other components)
+   *
+   * External callers (e.g. IntegratedTabLifecycleTracking.processTabEvent)
+   * dispatch synthetic TabEvents that do not go through the browser's
+   * onCreated/onUpdated listeners. For lifecycle-level events (created /
+   * updated / activated) we lazily bootstrap the tab state from the event
+   * payload so downstream consumers see the tab.
    */
   async processEvent(tabEvent: TabEvent): Promise<void> {
     try {
-      const tabState = this.tabStates.get(tabEvent.tabId);
-      if (!tabState) {
-        console.warn(`Tab state not found for tab ${tabEvent.tabId}`);
+      if (tabEvent.tabId === undefined || tabEvent.tabId === null) {
         return;
+      }
+
+      let tabState = this.tabStates.get(tabEvent.tabId);
+      if (!tabState) {
+        if (
+          tabEvent.type === 'created' ||
+          tabEvent.type === 'updated' ||
+          tabEvent.type === 'activated'
+        ) {
+          const syntheticTab = {
+            id: tabEvent.tabId,
+            url: tabEvent.data?.url || '',
+            title: tabEvent.data?.title || '',
+            windowId: tabEvent.windowId,
+            active: tabEvent.type === 'activated',
+            pinned: false,
+            discarded: false
+          } as unknown as chrome.tabs.Tab;
+          await this.createTabState(syntheticTab);
+          tabState = this.tabStates.get(tabEvent.tabId);
+        }
+        if (!tabState) {
+          console.warn(`Tab state not found for tab ${tabEvent.tabId}`);
+          return;
+        }
       }
 
       const now = Date.now();

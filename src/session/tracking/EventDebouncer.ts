@@ -110,6 +110,12 @@ export class EventDebouncer {
 
   /**
    * Debounce a tab event
+   *
+   * Returns true when the caller should process the event immediately (the
+   * first occurrence of an event key within the debounce window). Returns
+   * false when the event is a duplicate within the window and should be
+   * dropped — the queued entry auto-expires after the debounce timeout so
+   * future events for the same key are allowed through again.
    */
   async debounceEvent(tabEvent: TabEvent): Promise<boolean> {
     if (!this.isInitialized) {
@@ -119,7 +125,7 @@ export class EventDebouncer {
 
     try {
       this.metrics.eventsReceived++;
-      
+
       // Check queue size limit
       if (this.eventQueue.size >= this.config.maxQueueSize) {
         console.warn('Event queue full, forcing batch processing');
@@ -129,51 +135,72 @@ export class EventDebouncer {
       // Create event key for deduplication
       const eventKey = this.createEventKey(tabEvent);
       const now = Date.now();
-      
-      // Get existing debounced event or create new one
-      let debouncedEvent = this.eventQueue.get(eventKey);
-      
-      if (debouncedEvent) {
-        // Update existing event
-        debouncedEvent.lastSeen = now;
-        debouncedEvent.count++;
-        
-        // Merge events if enabled
+
+      const existing = this.eventQueue.get(eventKey);
+
+      if (existing) {
+        // Duplicate within the debounce window — merge and drop.
+        existing.lastSeen = now;
+        existing.count++;
         if (this.config.enableEventMerging) {
-          debouncedEvent = this.mergeEvents(debouncedEvent, tabEvent);
+          this.mergeEvents(existing, tabEvent);
         }
-        
         this.metrics.eventsDebounced++;
-      } else {
-        // Create new debounced event
-        debouncedEvent = {
-          originalEvent: tabEvent,
-          firstSeen: now,
-          lastSeen: now,
-          count: 1,
-          merged: false
-        };
-        
-        this.eventQueue.set(eventKey, debouncedEvent);
+
+        // Reset the expiry timer so the window slides while duplicates arrive.
+        const priority = this.getEventPriority(tabEvent);
+        const timeout = this.calculateTimeout(priority, existing.count);
+        this.setExpiryTimer(eventKey, timeout);
+
+        this.metrics.currentQueueSize = this.eventQueue.size;
+        return false;
       }
 
-      // Set or reset debounce timer
+      // First occurrence — track it so we can dedupe subsequent duplicates,
+      // then let it through to the caller for immediate processing.
+      const debouncedEvent: DebouncedEvent = {
+        originalEvent: tabEvent,
+        firstSeen: now,
+        lastSeen: now,
+        count: 1,
+        merged: false
+      };
+      this.eventQueue.set(eventKey, debouncedEvent);
+
       const priority = this.getEventPriority(tabEvent);
-      const timeout = this.calculateTimeout(priority, debouncedEvent.count);
-      
-      this.setDebouncTimer(eventKey, timeout);
+      const timeout = this.calculateTimeout(priority, 1);
+      this.setExpiryTimer(eventKey, timeout);
 
-      // Update metrics
       this.metrics.currentQueueSize = this.eventQueue.size;
-
-      // Return false to indicate event was queued (not processed immediately)
-      return false;
+      return true;
 
     } catch (error) {
       console.error('Error debouncing event:', error);
       // Process immediately on error
       return true;
     }
+  }
+
+  /**
+   * Set an expiry timer that just drops the queue entry (no handler call).
+   * The queue is only used to detect duplicates during the debounce window;
+   * events are processed synchronously by the caller on first occurrence.
+   */
+  private setExpiryTimer(eventKey: string, timeout: number): void {
+    const existing = this.processingTimers.get(eventKey);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    const timer = setTimeout(() => {
+      this.eventQueue.delete(eventKey);
+      this.processingTimers.delete(eventKey);
+      this.metrics.currentQueueSize = this.eventQueue.size;
+    }, timeout);
+
+    // setTimeout returns NodeJS.Timeout in node / number in browser; store
+    // as unknown-safe number for the Map's declared type.
+    this.processingTimers.set(eventKey, timer as unknown as number);
   }
 
   /**
@@ -582,18 +609,22 @@ export class EventDebouncer {
 
   /**
    * Clean up resources
+   *
+   * With the current debounce semantics events are processed
+   * synchronously by the caller on first occurrence; the queue only
+   * exists for deduplication during the debounce window, so cleanup just
+   * discards the pending window without re-firing handlers.
    */
   async cleanup(): Promise<void> {
-    // Process any remaining events
-    if (this.eventQueue.size > 0) {
-      await this.processBatch();
-    }
-
-    // Clear all timers
+    // Clear all pending expiry timers.
     for (const timer of this.processingTimers.values()) {
       clearTimeout(timer);
     }
     this.processingTimers.clear();
+
+    // Drop the dedupe window.
+    this.eventQueue.clear();
+    this.metrics.currentQueueSize = 0;
   }
 
   /**

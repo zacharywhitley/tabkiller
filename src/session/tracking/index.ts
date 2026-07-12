@@ -268,14 +268,14 @@ export class IntegratedTabLifecycleTracking {
 
   /**
    * Handle tab lifecycle events from TabLifecycleTracker
+   *
+   * Session detection is invoked directly in processTabEvent so we can
+   * surface the returned session boundary to the caller. Calling it here
+   * as well would double-process every event, so this handler only feeds
+   * navigation history.
    */
   private async handleTabLifecycleEvent(event: BrowsingEvent): Promise<void> {
     try {
-      // Forward to session detection if available
-      if (this.sessionDetection && this.config.sessionDetectionEnabled) {
-        await this.sessionDetection.processEvent(event);
-      }
-
       // Update navigation history
       if (this.config.enableNavigationHistory) {
         await this.navigationTracker.recordBrowsingEvent(event);
@@ -613,7 +613,23 @@ export class IntegratedTabLifecycleTracking {
       await this.navigationTracker.shutdown();
       await this.eventDebouncer.shutdown();
       await this.crossContextSync.shutdown();
-      
+
+      // Shut down session integration + detection if the tracker owns them
+      if (this.sessionIntegration) {
+        try {
+          await this.sessionIntegration.shutdown();
+        } catch (error) {
+          console.error('Error shutting down session integration:', error);
+        }
+      }
+      if (this.sessionDetection) {
+        try {
+          await this.sessionDetection.shutdown();
+        } catch (error) {
+          console.error('Error shutting down session detection:', error);
+        }
+      }
+
       this.isInitialized = false;
       console.log('Tab lifecycle tracking system shutdown complete');
     } catch (error) {

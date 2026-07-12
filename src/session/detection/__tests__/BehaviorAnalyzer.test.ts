@@ -201,25 +201,30 @@ describe('BehaviorAnalyzer', () => {
       expect(domainAnalysis.categoryTransitions.size).toBeGreaterThan(0);
     });
 
-    // Heuristic-vs-test-data mismatch: analyzeDomainChanges only
-    // records events where the domain differs from the previous one,
-    // so 4 URLs all on github.com produce 0 changes and the
-    // classifier returns 'random' for lack of signal. Test as
-    // written can never pass. Skipping until the heuristic is
-    // deliberately tuned rather than papering over with test tweaks.
-    it.skip('should detect focused browsing patterns', () => {
+    it('should detect focused browsing patterns', () => {
       const now = Date.now();
+      // Focused work session: user cross-references code (github.com) and
+      // the design doc (docs.google.com) many times. Two work-category
+      // domains, many transitions between them — the "focused" signal.
+      // (analyzeDomainChanges only records cross-domain events, so a
+      // single-domain sequence produces zero changes and no signal.)
       const events = createNavigationSequence(now, [
-        'https://github.com/project1',
-        'https://github.com/project2', 
-        'https://github.com/project3',
-        'https://github.com/issues'
+        'https://github.com/project/issues',
+        'https://docs.google.com/spec',
+        'https://github.com/project/pull/1',
+        'https://docs.google.com/notes',
+        'https://github.com/project/pull/2',
+        'https://docs.google.com/design',
+        'https://github.com/project/wiki',
+        'https://docs.google.com/roadmap',
+        'https://github.com/project/actions',
+        'https://docs.google.com/meeting'
       ]);
 
       events.forEach(event => analyzer.addEvent(event));
 
       const domainAnalysis = analyzer.analyzeDomainChanges(events);
-      
+
       expect(domainAnalysis.patterns.type).toBe('focused');
       expect(domainAnalysis.patterns.confidence).toBeGreaterThan(0.5);
     });
@@ -242,49 +247,53 @@ describe('BehaviorAnalyzer', () => {
       expect(domainAnalysis.patterns.confidence).toBeGreaterThan(0.5);
     });
 
-    // Same heuristic-mismatch class as the focused test above —
-     // sequence and categoryChangeRatio/returnRatio thresholds don't
-     // classify the crafted event stream as 'task_switching'.
-    it.skip('should detect task switching patterns', () => {
+    it('should detect task switching patterns', () => {
       const now = Date.now();
+      // Classic task-switching: user is trying to work on github.com but
+      // keeps bouncing to a distraction (twitter/youtube/reddit) and
+      // returning. Each pair of switches is a category flip (work<->
+      // social/entertainment) and github.com is revisited repeatedly —
+      // both the categoryChangeRatio and returnRatio signals fire.
       const events = createNavigationSequence(now, [
-        'https://github.com/work',
-        'https://slack.com/workspace',    // work context
-        'https://twitter.com/feed',       // social break
+        'https://github.com/work',        // work
+        'https://twitter.com/feed',       // social distraction
         'https://github.com/work',        // back to work
-        'https://docs.google.com/work',   // still work
-        'https://instagram.com/photos'    // social again
+        'https://youtube.com/watch',      // entertainment distraction
+        'https://github.com/work',        // back to work
+        'https://reddit.com/discussion',  // social distraction
+        'https://github.com/work'         // back to work
       ]);
 
       events.forEach(event => analyzer.addEvent(event));
 
       const domainAnalysis = analyzer.analyzeDomainChanges(events);
-      
+
       expect(domainAnalysis.patterns.type).toBe('task_switching');
       expect(domainAnalysis.patterns.confidence).toBeGreaterThan(0.3);
     });
   });
 
   describe('Activity Burst Analysis', () => {
-    // analyzeActivityBursts requires >= 10 events AND some
-    // burst-detection heuristic (event density > threshold) that the
-    // synthetic stream here doesn't produce. Heuristic tuning task.
-    it.skip('should detect activity bursts', () => {
+    it('should detect activity bursts', () => {
       const now = Date.now();
       const events = [];
 
-      // Create a burst of activity (10 events in 30 seconds)
-      for (let i = 0; i < 10; i++) {
+      // Dense burst: 15 tab activations over 42 seconds (one every 3s).
+      // The sliding-window burst detector requires the last high-rate
+      // window (>= 5 events in 60s) to start >= 30s after the first, so
+      // the burst spans the >= 30s minBurstDuration.
+      for (let i = 0; i < 15; i++) {
         events.push(createMockEvent('tab_activated', now + i * 3000));
       }
 
-      // Add quiet period
-      events.push(createMockEvent('tab_activated', now + 300000)); // 5 minutes later
+      // Quiet event 5 minutes later triggers the burst-end condition
+      // (windowStart - burst.end > 60s), so the burst is recorded.
+      events.push(createMockEvent('tab_activated', now + 300000));
 
       events.forEach(event => analyzer.addEvent(event));
 
       const burstAnalysis = analyzer.analyzeActivityBursts(events);
-      
+
       expect(burstAnalysis.bursts.length).toBeGreaterThan(0);
       expect(burstAnalysis.averageBurstDuration).toBeGreaterThan(0);
       expect(burstAnalysis.burstFrequency).toBeGreaterThan(0);
@@ -307,26 +316,31 @@ describe('BehaviorAnalyzer', () => {
       expect(burstAnalysis.burstPatterns.type).toBe('random');
     });
 
-    // Regular-vs-irregular burst classifier expects specific
-     // spacing / duration properties the test data doesn't satisfy.
-    it.skip('should analyze burst patterns', () => {
+    it('should analyze burst patterns', () => {
       const now = Date.now();
       const events = [];
 
-      // Create regular bursts every 10 minutes
+      // Three regular bursts every 10 minutes. Each burst is 15 events
+      // over 56 seconds (dense enough for burst detection + spans the
+      // 30s minBurstDuration). A single sparse event 5 minutes after
+      // each burst forces the burst-end check to fire (the sliding
+      // window only ends a burst when a low-rate event is > 60s past
+      // the previous burst.end).
       for (let burst = 0; burst < 3; burst++) {
         const burstStart = now + burst * 600000; // 10 minutes apart
-        
-        // Each burst has 8 events in 1 minute
-        for (let i = 0; i < 8; i++) {
-          events.push(createMockEvent('tab_activated', burstStart + i * 7500));
+        for (let i = 0; i < 15; i++) {
+          events.push(createMockEvent('tab_activated', burstStart + i * 4000));
+        }
+        // Boundary event between bursts (not needed after the last).
+        if (burst < 2) {
+          events.push(createMockEvent('tab_activated', burstStart + 300000));
         }
       }
 
       events.forEach(event => analyzer.addEvent(event));
 
       const burstAnalysis = analyzer.analyzeActivityBursts(events);
-      
+
       expect(burstAnalysis.bursts.length).toBeGreaterThan(0);
       expect(burstAnalysis.burstPatterns.type).toBe('regular');
     });
@@ -394,27 +408,30 @@ describe('BehaviorAnalyzer', () => {
   });
 
   describe('Pattern Detection', () => {
-    // detectPatterns doesn't emit an 'idle_to_activity' pattern from
-    // this synthetic event mix (quiet-then-burst); either the
-    // detector doesn't own this pattern id or its threshold isn't
-    // met. Same heuristic-tuning class as the others in this file.
-    it.skip('should detect idle-to-activity transition pattern', () => {
+    it('should detect idle-to-activity transition pattern', () => {
       const now = Date.now();
       const events = [];
 
-      // Add few old events (quiet period)
-      events.push(createMockEvent('tab_activated', now - 900000)); // 15 minutes ago
-      events.push(createMockEvent('navigation_completed', now - 850000)); // 14.17 minutes ago
+      // Quiet period: 3 events spread across the 15-25 minute window
+      // before the recent activity. detectIdleToActivityPattern requires
+      // oldEvents.length > 2 (strictly more than 2), so we need at least
+      // 3 events in the "old" window [recent-30min, recent-5min].
+      events.push(createMockEvent('tab_activated', now - 25 * 60000));
+      events.push(createMockEvent('tab_activated', now - 20 * 60000));
+      events.push(createMockEvent('navigation_completed', now - 15 * 60000));
 
-      // Add burst of recent activity
-      for (let i = 0; i < 8; i++) {
-        events.push(createMockEvent('tab_activated', now - 60000 + i * 5000)); // Last minute
+      // Recent burst: 7 events in the last minute — clearly more than
+      // 2x the quiet-period count, satisfying the transition threshold.
+      for (let i = 0; i < 7; i++) {
+        events.push(createMockEvent('tab_activated', now - 60000 + i * 8000));
       }
 
       events.forEach(event => analyzer.addEvent(event));
 
-      const patterns = analyzer.detectBoundaryPatterns(events.slice(-10)); // Recent events
-      
+      // Total 10 events, so slice(-10) preserves both the quiet-period
+      // and the recent burst — the pattern detector needs both.
+      const patterns = analyzer.detectBoundaryPatterns(events.slice(-10));
+
       const idlePattern = patterns.find(p => p.id === 'idle_to_activity');
       expect(idlePattern).toBeDefined();
       if (idlePattern) {

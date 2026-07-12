@@ -368,9 +368,18 @@ async function walkVisitEdges(
         const from = nodesById.get(id);
         const to = nodesById.get(e.to_id);
         if (!from || !to) continue;
+        // Cubic Bezier with horizontal tangents at both endpoints —
+        // reads like an arctan transition between the two rows: flat
+        // near the endpoints, curved in the middle. The two control
+        // points sit at the horizontal midpoint, one on each row's Y,
+        // which puts the tangent horizontal at both dots.
+        // For the same-row case the S-curve would collapse to a
+        // straight line right along the lane, so we arc up and over
+        // with a small elevation instead.
         const midX = (from.cx + to.cx) / 2;
-        const midY = from.cy === to.cy ? from.cy - 20 : (from.cy + to.cy) / 2;
-        const path = `M ${from.cx} ${from.cy} Q ${midX} ${midY}, ${to.cx} ${to.cy}`;
+        const path = from.cy === to.cy
+          ? `M ${from.cx} ${from.cy} C ${from.cx} ${from.cy - 18}, ${to.cx} ${to.cy - 18}, ${to.cx} ${to.cy}`
+          : `M ${from.cx} ${from.cy} C ${midX} ${from.cy}, ${midX} ${to.cy}, ${to.cx} ${to.cy}`;
         edges.push({ key: `${kind}::${id}->${e.to_id}`, from_id: id, to_id: e.to_id, kind, path });
       }
     }
@@ -822,7 +831,7 @@ export const NodeGraphView: React.FC = () => {
                   d={e.path}
                   fill="none"
                   stroke="#888"
-                  strokeWidth={1.2}
+                  strokeWidth={2}
                   strokeDasharray={e.kind === 'opened_from' ? '4 3' : undefined}
                   markerEnd="url(#tk-ng-arrow)"
                   opacity={0.7}

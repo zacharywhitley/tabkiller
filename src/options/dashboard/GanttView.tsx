@@ -275,20 +275,25 @@ async function walkOpenerEdges(
   for (const id of visitIds) {
     const outs = await g.outPoint(id, 'opened_from');
     for (const e of outs) {
-      const from = visitPosById.get(id);
-      const to = visitPosById.get(e.to_id);
-      if (!from || !to) continue;
-      // Arc from child (from) up/down to parent (to). Bow outward so the
-      // arrow doesn't overlap the Tab bar it starts on.
-      const midX = (from.cx + to.cx) / 2;
-      const midY = from.cy === to.cy ? from.cy - 18 : (from.cy + to.cy) / 2;
-      const path = `M ${from.cx} ${from.cy} Q ${midX} ${midY}, ${to.cx} ${to.cy}`;
+      const child = visitPosById.get(id);
+      const parent = visitPosById.get(e.to_id);
+      if (!child || !parent) continue;
+      // Drop a straight vertical line at the child visit's at_time
+      // (= the moment the new tab was opened). It starts on the
+      // parent tab's row at that same X and lands on the child dot.
+      // Previously we drew a Bezier arc from the parent visit's own
+      // at_time — for opener chains the parent visit is usually the
+      // one that fired the tab-open, which anchors on the parent
+      // tab's opened_at, so the arrow appeared to leave from the
+      // beginning of the parent tab bar instead of from where the
+      // new tab was actually spawned.
+      const path = `M ${child.cx} ${parent.cy} L ${child.cx} ${child.cy}`;
       edges.push({
         key: `opened_from::${id}->${e.to_id}`,
-        fromX: from.cx,
-        fromY: from.cy,
-        toX: to.cx,
-        toY: to.cy,
+        fromX: child.cx,
+        fromY: parent.cy,
+        toX: child.cx,
+        toY: child.cy,
         path,
       });
     }

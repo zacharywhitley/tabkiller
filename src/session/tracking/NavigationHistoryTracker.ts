@@ -291,9 +291,16 @@ export class NavigationHistoryTracker {
     const tabNavigations = this.tabNavigations.get(tabEvent.tabId) || [];
     const previousEntry = tabNavigations[tabNavigations.length - 1];
 
-    // Finalize previous entry's time on page
+    // Finalize previous entry's time on page. When the delta is
+    // nonzero we also roll it into the pattern average — otherwise
+    // avgTimeSpent would stay 0 for every domain that hasn't been
+    // revisited.
     if (previousEntry && !previousEntry.timeOnPage) {
-      previousEntry.timeOnPage = now - previousEntry.timestamp;
+      const dt = now - previousEntry.timestamp;
+      previousEntry.timeOnPage = dt;
+      if (dt > 0 && this.config.enablePatternDetection) {
+        this.absorbTimingIntoPattern(previousEntry);
+      }
     }
 
     // Determine if this is a reload
@@ -561,6 +568,29 @@ export class NavigationHistoryTracker {
   }
 
   /**
+   * Roll a newly-known timeOnPage into an existing pattern's avg.
+   * updateNavigationPatterns runs when the entry is first created — at
+   * that point timeOnPage is still unknown, so avgTimeSpent never gets
+   * updated. This is the second-pass hook, called once the entry's
+   * time on page is finalized.
+   */
+  private absorbTimingIntoPattern(entry: NavigationEntry): void {
+    if (!entry.timeOnPage) return;
+    try {
+      const url = new URL(entry.url);
+      const pattern = this.patterns.get(url.hostname);
+      if (!pattern || pattern.frequency === 0) return;
+      // Running average across all visits: treat prior avg as covering
+      // (frequency - 1) visits and merge in this one.
+      pattern.avgTimeSpent =
+        (pattern.avgTimeSpent * (pattern.frequency - 1) + entry.timeOnPage) /
+        pattern.frequency;
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+
+  /**
    * Load existing history (placeholder)
    */
   private async loadExistingHistory(): Promise<void> {
@@ -605,9 +635,24 @@ export class NavigationHistoryTracker {
         }
       }
 
-      // Clean old tab navigations
+      // Enforce maxEntries: drop the oldest entries once the store
+      // grows past the configured cap. Retention-based pruning above
+      // never fires for a burst of recent navigations, so without this
+      // the cap is advisory only.
+      if (this.entries.size > this.config.maxEntries) {
+        const sortedNewestFirst = Array.from(this.entries.entries())
+          .sort((a, b) => b[1].timestamp - a[1].timestamp);
+        const kept = new Map(sortedNewestFirst.slice(0, this.config.maxEntries));
+        cleanedCount += this.entries.size - kept.size;
+        this.entries = kept;
+      }
+
+      // Clean old tab navigations (also drop any entries that were
+      // just evicted by the size cap above)
       for (const [tabId, navigations] of this.tabNavigations) {
-        const filteredNavigations = navigations.filter(nav => nav.timestamp >= cutoffTime);
+        const filteredNavigations = navigations.filter(
+          nav => nav.timestamp >= cutoffTime && this.entries.has(nav.id)
+        );
         if (filteredNavigations.length === 0) {
           this.tabNavigations.delete(tabId);
         } else {

@@ -30,13 +30,18 @@ const TAB_GAP = 4;
 const WINDOW_HEADER_HEIGHT = 22;
 const WINDOW_GAP = 10;
 const PAGE_LABEL_INDENT = 44;
-// Left-pane columns for labels (fixed; do not scroll horizontally). Held
-// at 300 px so users with narrow browser windows still get meaningful
-// horizontal space for the timeline. Path labels beyond the pane clip;
-// hover reveals the full URL.
-const LABEL_PANE_WIDTH = 300;
+// Left-pane label columns. LABEL_PANE_WIDTH is user-adjustable (drag the
+// splitter between the panes; persisted to localStorage). Column x
+// offsets are relative to the left edge and stay fixed as the pane
+// grows/shrinks — path labels that exceed the pane clip, hover on a
+// dot to see the full URL.
+const DEFAULT_LABEL_PANE_WIDTH = 300;
+const MIN_LABEL_PANE_WIDTH = 140;
+const MAX_LABEL_PANE_WIDTH = 720;
 const DOMAIN_COL_X = PAGE_LABEL_INDENT;
 const PATH_COL_X = PAGE_LABEL_INDENT + 100;
+const SPLITTER_WIDTH = 4;
+const LABEL_PANE_WIDTH_STORAGE_KEY = 'tabkiller.dashboard.graph.labelPaneWidth';
 // Default zoom: timeline pane is this multiple of its container width so it
 // is naturally horizontally scrollable / pan-draggable out of the gate.
 const TIMELINE_ZOOM = 2;
@@ -307,12 +312,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     minHeight: '100%',
   },
-  labelPane: {
-    width: LABEL_PANE_WIDTH,
+  splitter: {
+    width: SPLITTER_WIDTH,
     flexShrink: 0,
-    borderRight: '1px solid #e5e7ea',
-    background: 'var(--tk-labelpane-bg, #fafbfc)',
+    background: '#e5e7ea',
+    cursor: 'col-resize',
+    userSelect: 'none',
   },
+  splitterActive: { background: '#4a76c4' },
   timelinePane: {
     flex: 1,
     minWidth: 0,
@@ -329,7 +336,9 @@ const styles: Record<string, React.CSSProperties> = {
 const darkOverrides = `
   @media (prefers-color-scheme: dark) {
     .tk-ng__canvas-outer { background: #26282c !important; border-color: #3a3d42 !important; }
-    .tk-ng__label-pane { background: #23262b !important; border-right-color: #3a3d42 !important; }
+    .tk-ng__label-pane { background: #23262b !important; }
+    .tk-ng__splitter { background: #3a3d42 !important; }
+    .tk-ng__splitter--active { background: #4b8fed !important; }
     .tk-ng__axis { fill: #b0b3b7 !important; }
     .tk-ng__lane-label { fill: #a8abb0 !important; }
     .tk-ng__nodelabel { fill: #cdd0d5 !important; }
@@ -437,10 +446,62 @@ export const NodeGraphView: React.FC = () => {
     return () => globalThis.removeEventListener('resize', measure);
   }, []);
 
+  // Label pane width is user-adjustable via a drag splitter between the
+  // two panes. Persisted to localStorage so it survives reloads.
+  const [labelPaneWidth, setLabelPaneWidth] = useState<number>(() => {
+    try {
+      const raw = globalThis.localStorage?.getItem(LABEL_PANE_WIDTH_STORAGE_KEY);
+      const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+      if (Number.isFinite(parsed) && parsed >= MIN_LABEL_PANE_WIDTH && parsed <= MAX_LABEL_PANE_WIDTH) {
+        return parsed;
+      }
+    } catch {
+      // localStorage disabled — fall through to default
+    }
+    return DEFAULT_LABEL_PANE_WIDTH;
+  });
+  useEffect(() => {
+    try {
+      globalThis.localStorage?.setItem(LABEL_PANE_WIDTH_STORAGE_KEY, String(labelPaneWidth));
+    } catch {
+      // ignore
+    }
+  }, [labelPaneWidth]);
+
+  // Splitter drag state.
+  const canvasRowRef = React.useRef<HTMLDivElement | null>(null);
+  const splitterDragStateRef = React.useRef<{ startX: number; startWidth: number } | null>(null);
+  const [splitterDragging, setSplitterDragging] = useState(false);
+  const onSplitterMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    splitterDragStateRef.current = { startX: e.clientX, startWidth: labelPaneWidth };
+    setSplitterDragging(true);
+    e.preventDefault();
+  }, [labelPaneWidth]);
+  useEffect(() => {
+    if (!splitterDragging) return;
+    const onMove = (e: MouseEvent) => {
+      const drag = splitterDragStateRef.current;
+      if (!drag) return;
+      const next = drag.startWidth + (e.clientX - drag.startX);
+      const clamped = Math.max(MIN_LABEL_PANE_WIDTH, Math.min(MAX_LABEL_PANE_WIDTH, next));
+      setLabelPaneWidth(clamped);
+    };
+    const onUp = () => {
+      splitterDragStateRef.current = null;
+      setSplitterDragging(false);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [splitterDragging]);
+
   // Timeline pane width is (viewport minus label pane) × zoom multiplier.
   // Makes the SVG wider than its container so it naturally scrolls and
   // drag-to-pan feels correct out of the box.
-  const timelineViewportWidth = Math.max(400, width - LABEL_PANE_WIDTH);
+  const timelineViewportWidth = Math.max(400, width - labelPaneWidth - SPLITTER_WIDTH);
   const timelineSvgWidth = timelineViewportWidth * TIMELINE_ZOOM;
 
   const layout = useMemo(() => {
@@ -533,14 +594,19 @@ export const NodeGraphView: React.FC = () => {
           className="tk-ng__canvas-outer"
           style={styles.canvasOuter}
         >
-        <div style={styles.canvasRow}>
-          {/* Left pane: window / tab / domain / path labels, fixed width,
-              no horizontal scroll — stays visible while the timeline pans. */}
+        <div ref={canvasRowRef} style={styles.canvasRow}>
+          {/* Left pane: window / tab / domain / path labels, user-resizable
+              width, no horizontal scroll — stays visible while the timeline
+              pans. */}
           <svg
             className="tk-ng__label-pane"
-            width={LABEL_PANE_WIDTH}
+            width={labelPaneWidth}
             height={layout.height}
-            style={styles.labelPane}
+            style={{
+              width: labelPaneWidth,
+              flexShrink: 0,
+              background: 'var(--tk-labelpane-bg, #fafbfc)',
+            }}
           >
             {layout.windows.map((w) => (
               <g key={w.window.id}>
@@ -548,7 +614,7 @@ export const NodeGraphView: React.FC = () => {
                   className="tk-ng__winband"
                   x={0}
                   y={w.y}
-                  width={LABEL_PANE_WIDTH}
+                  width={labelPaneWidth}
                   height={w.height}
                   fill="rgba(0,0,0,0.03)"
                 />
@@ -620,6 +686,15 @@ export const NodeGraphView: React.FC = () => {
               ),
             )}
           </svg>
+
+          {/* Drag splitter between the two panes. */}
+          <div
+            className={`tk-ng__splitter${splitterDragging ? ' tk-ng__splitter--active' : ''}`}
+            style={{ ...styles.splitter, ...(splitterDragging ? styles.splitterActive : {}) }}
+            onMouseDown={onSplitterMouseDown}
+            data-testid="tk-ng-splitter"
+            title="Drag to resize"
+          />
 
           {/* Right pane: time axis, edges, visit dots. Wider than the
               container so it scrolls horizontally; click-and-drag to pan. */}

@@ -47,14 +47,38 @@ jest.mock('webextension-polyfill', () => ({
       removeListener: jest.fn()
     }
   },
-  storage: {
-    local: {
-      get: jest.fn(),
-      set: jest.fn(),
-      remove: jest.fn(),
-      clear: jest.fn()
-    }
-  },
+  // In-memory storage.local mock — real Promise semantics so await
+  // chains resolve. Bare jest.fn()s used to return undefined
+  // synchronously, breaking every module that awaited storage.
+  storage: (() => {
+    const store = new Map<string, unknown>();
+    return {
+      local: {
+        get: jest.fn(async (key: string | string[] | Record<string, unknown> | null) => {
+          if (key == null) return Object.fromEntries(store);
+          if (typeof key === 'string') return { [key]: store.get(key) };
+          if (Array.isArray(key)) {
+            const out: Record<string, unknown> = {};
+            for (const k of key) out[k] = store.get(k);
+            return out;
+          }
+          const out: Record<string, unknown> = {};
+          for (const [k, defaultVal] of Object.entries(key as Record<string, unknown>)) {
+            out[k] = store.has(k) ? store.get(k) : defaultVal;
+          }
+          return out;
+        }),
+        set: jest.fn(async (items: Record<string, unknown>) => {
+          for (const [k, v] of Object.entries(items)) store.set(k, v);
+        }),
+        remove: jest.fn(async (keys: string | string[]) => {
+          const arr = Array.isArray(keys) ? keys : [keys];
+          for (const k of arr) store.delete(k);
+        }),
+        clear: jest.fn(async () => { store.clear(); }),
+      },
+    };
+  })(),
   windows: {
     WINDOW_ID_NONE: -1,
     onCreated: {
@@ -136,14 +160,38 @@ jest.mock('webextension-polyfill', () => ({
       removeListener: jest.fn()
     }
   },
-  storage: {
-    local: {
-      get: jest.fn(),
-      set: jest.fn(),
-      remove: jest.fn(),
-      clear: jest.fn()
-    }
-  },
+  // In-memory storage.local mock — real Promise semantics so await
+  // chains resolve. Bare jest.fn()s used to return undefined
+  // synchronously, breaking every module that awaited storage.
+  storage: (() => {
+    const store = new Map<string, unknown>();
+    return {
+      local: {
+        get: jest.fn(async (key: string | string[] | Record<string, unknown> | null) => {
+          if (key == null) return Object.fromEntries(store);
+          if (typeof key === 'string') return { [key]: store.get(key) };
+          if (Array.isArray(key)) {
+            const out: Record<string, unknown> = {};
+            for (const k of key) out[k] = store.get(k);
+            return out;
+          }
+          const out: Record<string, unknown> = {};
+          for (const [k, defaultVal] of Object.entries(key as Record<string, unknown>)) {
+            out[k] = store.has(k) ? store.get(k) : defaultVal;
+          }
+          return out;
+        }),
+        set: jest.fn(async (items: Record<string, unknown>) => {
+          for (const [k, v] of Object.entries(items)) store.set(k, v);
+        }),
+        remove: jest.fn(async (keys: string | string[]) => {
+          const arr = Array.isArray(keys) ? keys : [keys];
+          for (const k of arr) store.delete(k);
+        }),
+        clear: jest.fn(async () => { store.clear(); }),
+      },
+    };
+  })(),
   windows: {
     WINDOW_ID_NONE: -1,
     onCreated: {
@@ -273,3 +321,27 @@ global.MutationObserver = jest.fn().mockImplementation(() => ({
   observe: jest.fn(),
   disconnect: jest.fn()
 }));
+
+// jsdom 26 doesn't expose crypto.subtle (Web Crypto API), so every
+// isWebCryptoSupported() check returns false and all of src/crypto/**
+// throws. Node ships webcrypto as node:crypto.webcrypto — install it
+// globally for the test environment.
+{
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodeCrypto = require('node:crypto') as typeof import('node:crypto');
+  const subtleCrypto = nodeCrypto.webcrypto as unknown as Crypto;
+  Object.defineProperty(globalThis, 'crypto', {
+    value: subtleCrypto,
+    configurable: true,
+  });
+}
+
+// TextEncoder / TextDecoder are Node built-ins but not attached to
+// globalThis in jsdom. Wire them up for tests that convert between
+// binary buffers and strings.
+if (typeof (globalThis as { TextEncoder?: unknown }).TextEncoder === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const util = require('node:util') as typeof import('node:util');
+  (globalThis as unknown as { TextEncoder: typeof TextEncoder }).TextEncoder = util.TextEncoder;
+  (globalThis as unknown as { TextDecoder: typeof TextDecoder }).TextDecoder = util.TextDecoder;
+}

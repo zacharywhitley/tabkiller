@@ -32,7 +32,7 @@ import { BrowserDetector } from '../utils/browser-detection';
 /**
  * Chrome-specific tabs adapter
  */
-class ChromeTabsAdapter implements TabsAdapter {
+export class ChromeTabsAdapter implements TabsAdapter {
   private cache = new AdapterCache<any>(5000);
   private eventManager = new EventListenerManager();
 

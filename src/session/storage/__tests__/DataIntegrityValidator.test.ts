@@ -11,6 +11,10 @@ import { calculateChecksum } from '../../utils/dataUtils';
 // TEST DATA
 // =============================================================================
 
+// Mock session — kept internally consistent (tabs [], totalTabCount 0,
+// domains []) so the "valid session" test doesn't trip the validator's
+// cross-field consistency warnings. Tests that need mismatches build
+// their own variants inline.
 const mockStoredSession: StoredSession = {
   id: 'test-session-1',
   tag: 'Test Session',
@@ -22,14 +26,14 @@ const mockStoredSession: StoredSession = {
     isPrivate: false,
     totalTime: 60000,
     pageCount: 0,
-    domain: ['example.com']
+    domain: []
   },
   version: 1,
   lastModified: Date.now(),
   size: 1024,
   compressed: false,
-  domains: ['example.com'],
-  totalTabCount: 1,
+  domains: [],
+  totalTabCount: 0,
   totalNavigationEvents: 0,
   checksum: '',
   isValid: true
@@ -140,10 +144,13 @@ describe('DataIntegrityValidator', () => {
 
       const result = await validator.validateSession(invalidSession);
 
+      // Removing `id` also breaks checksum verification, so the report
+      // usually surfaces both; assert schema_violation is present rather
+      // than pinning it to a specific slot.
       expect(result.isValid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0].type).toBe('schema_violation');
-      expect(result.errors[0].message).toContain('missing required field: id');
+      expect(result.errors.some(
+        (e) => e.type === 'schema_violation' && e.message.includes('missing required field: id'),
+      )).toBe(true);
     });
 
     test('should detect checksum mismatches', async () => {
@@ -218,9 +225,9 @@ describe('DataIntegrityValidator', () => {
       const result = await validator.validateTab(invalidTab);
 
       expect(result.isValid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0].type).toBe('schema_violation');
-      expect(result.errors[0].message).toContain('missing required field: url');
+      expect(result.errors.some(
+        (e) => e.type === 'schema_violation' && e.message.includes('missing required field: url'),
+      )).toBe(true);
     });
 
     test('should detect invalid tab IDs', async () => {
@@ -291,9 +298,9 @@ describe('DataIntegrityValidator', () => {
       const result = await validator.validateNavigationEvent(invalidEvent);
 
       expect(result.isValid).toBe(false);
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0].type).toBe('schema_violation');
-      expect(result.errors[0].message).toContain('invalid tabId');
+      expect(result.errors.some(
+        (e) => e.type === 'schema_violation' && e.message.includes('invalid tabId'),
+      )).toBe(true);
     });
 
     test('should detect invalid timestamps', async () => {

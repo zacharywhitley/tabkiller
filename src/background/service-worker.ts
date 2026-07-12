@@ -41,6 +41,7 @@ import { SessionEmitter } from '../session/tracking/SessionEmitter';
 import { GraphStore } from '../database/graph/store';
 import { GraphIngest, GRAPH_INGEST_ALARM_NAME } from '../database/graph/ingest';
 import { SessionStorageEngine } from '../session/storage/SessionStorageEngine';
+import { Shipper } from './shipping/Shipper';
 
 function generateEventId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -100,6 +101,11 @@ class BackgroundService {
   private sessionStorageEngine: SessionStorageEngine;
   private graphIngest?: GraphIngest;
 
+  // Optional external log shipper — pilot for the extension-as-thin-
+  // client architecture. When settings.shipTo is set, every event
+  // written to the outbox is also POSTed to the configured server.
+  private shipper?: Shipper;
+
   constructor() {
     this.state = {
       activeTabs: new Map(),
@@ -137,6 +143,20 @@ class BackgroundService {
 
       // Bring the outbox online before any capture handlers fire.
       await this.outbox.initialize();
+
+      // Optional shipping: if a shipTo URL is configured, monkey-patch
+      // outbox.storeEvent so every stored event also POSTs to the
+      // server. Fire-and-forget; local capture is unaffected. Pilot
+      // for the extension-as-thin-client architecture.
+      if (this.state.settings.shipTo) {
+        this.shipper = new Shipper(this.state.settings.shipTo);
+        const originalStoreEvent = this.outbox.storeEvent.bind(this.outbox);
+        this.outbox.storeEvent = async (event: BrowsingEvent) => {
+          await originalStoreEvent(event);
+          this.shipper!.enqueue(event);
+        };
+        console.log('TabKiller shipping enabled →', this.state.settings.shipTo);
+      }
 
       // Open the fresh session BEFORE anything else can push events into
       // the outbox. `session_started` must precede the first

@@ -1,0 +1,4 @@
+node_modules/
+tabkiller.db
+tabkiller.db-*
+*.log

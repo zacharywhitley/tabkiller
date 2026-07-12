@@ -81,6 +81,10 @@ export interface ExtensionSettings {
   excludedDomains: string[];
   includedDomains: string[];
   privacyMode: PrivacyMode;
+  // Optional base URL of a TabKiller pilot server. When set, every
+  // BrowsingEvent stored in the outbox is also POSTed to `${shipTo}/events`.
+  // Fire-and-forget; local IDB behavior is unchanged. Unset = no shipping.
+  shipTo?: string;
 }
 
 export type PrivacyMode = 'strict' | 'moderate' | 'minimal';

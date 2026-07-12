@@ -1,0 +1,17 @@
+{
+  "name": "tabkiller-pilot-server",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Pilot server for the TabKiller thin-client architecture — accepts BrowsingEvent POSTs and stores them in SQLite.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.3"
+  }
+}

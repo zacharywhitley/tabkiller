@@ -519,15 +519,19 @@ export const NodeGraphView: React.FC = () => {
     if (!data) return null;
     if (!visibleWindow) return data;
     const [vFrom, vTo] = visibleWindow;
+    // Graph is visit-centric — the only thing we draw per visit is
+    // one dot at at_time. Filter by at_time falling inside the
+    // visible window: a visit that started before the window and is
+    // still open would have a lifetime overlap, but its dot would
+    // render off-screen and leave the tab row occupying space with
+    // nothing visible in it.
     const out: WindowTabVisitWindow[] = [];
     for (const w of data) {
       const tabs: typeof w.tabs = [];
       for (const t of w.tabs) {
-        const visits = t.visits.filter((v) => {
-          const start = v.visit.at_time;
-          const end = v.visit.ended_at ?? Number.POSITIVE_INFINITY;
-          return start <= vTo && end >= vFrom;
-        });
+        const visits = t.visits.filter(
+          (v) => v.visit.at_time >= vFrom && v.visit.at_time <= vTo,
+        );
         if (visits.length === 0) continue;
         tabs.push({ ...t, visits });
       }

@@ -289,7 +289,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflowY: 'auto',
     overflowX: 'hidden',
-    maxHeight: CANVAS_MAX_HEIGHT_CSS,
+    // Force the pane to actually take up this height, not just cap it.
+    // Otherwise a short graph shrinks to content height and leaves a gap
+    // at the bottom of the browser window even when there's more content
+    // waiting.
+    height: CANVAS_MAX_HEIGHT_CSS,
     minHeight: 300,
   },
   labelPane: {

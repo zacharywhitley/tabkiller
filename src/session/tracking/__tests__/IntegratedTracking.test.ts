@@ -2,18 +2,17 @@
  * Integration Tests for Tab Lifecycle Tracking System
  * Tests the complete integrated system with all components working together
  *
- * 12 tests are marked `it.skip` here — they assert that mocks/spies
- * get called during end-to-end event processing, but the mock browser
- * API in this file is a bare `jest.fn()` skeleton missing enough
- * shape that the tracking pipeline swallows events before they reach
- * the SessionDetection / cross-context / metrics layers under test.
- * Fixing requires either a full mock-browser rebuild here or moving
- * these to run against a real fake-webext harness. Leaving skipped
- * with the assertions intact so the fix is a mechanical unblock
- * later, not a rewrite.
+ * The mock browser API below records the handlers registered via
+ * addListener so tests (or the tracker itself, when configured with
+ * fake-webext-style listeners) can inspect them. The pipeline under test
+ * is driven directly through IntegratedTabLifecycleTracking.processTabEvent
+ * — the previous debounce-vs-pipeline bug that swallowed every event
+ * before it could reach SessionDetection / cross-context sync / metrics
+ * has been fixed in the production code (EventDebouncer + TabLifecycleTracker
+ * + IntegratedTabLifecycleTracking).
  */
 
-import { 
+import {
   IntegratedTabLifecycleTracking,
   createTabLifecycleTracking,
   TAB_TRACKING_PRESETS
@@ -21,30 +20,59 @@ import {
 import { IntegratedSessionDetection } from '../../detection';
 import { TabEvent, TabTrackingConfig } from '../../../shared/types';
 
+// Build a listener-slot factory that captures every registered handler and
+// exposes a `.fire(...)` helper so tests can drive the browser API.
+type Listener = (...args: any[]) => any;
+type ListenerSlot = {
+  addListener: jest.Mock<void, [Listener]>;
+  removeListener: jest.Mock<void, [Listener]>;
+  fire: (...args: any[]) => Promise<void>;
+  listeners: Listener[];
+};
+
+const makeListenerSlot = (): ListenerSlot => {
+  const listeners: Listener[] = [];
+  return {
+    listeners,
+    addListener: jest.fn((fn: Listener) => {
+      listeners.push(fn);
+    }) as jest.Mock<void, [Listener]>,
+    removeListener: jest.fn((fn: Listener) => {
+      const idx = listeners.indexOf(fn);
+      if (idx >= 0) listeners.splice(idx, 1);
+    }) as jest.Mock<void, [Listener]>,
+    fire: async (...args: any[]) => {
+      for (const fn of [...listeners]) {
+        await fn(...args);
+      }
+    }
+  };
+};
+
 // Mock browser API
 const mockBrowserAPI = {
   tabs: {
-    onCreated: { addListener: jest.fn(), removeListener: jest.fn() },
-    onUpdated: { addListener: jest.fn(), removeListener: jest.fn() },
-    onRemoved: { addListener: jest.fn(), removeListener: jest.fn() },
-    onActivated: { addListener: jest.fn(), removeListener: jest.fn() },
-    onMoved: { addListener: jest.fn(), removeListener: jest.fn() },
-    onAttached: { addListener: jest.fn(), removeListener: jest.fn() },
-    onDetached: { addListener: jest.fn(), removeListener: jest.fn() },
+    onCreated: makeListenerSlot(),
+    onUpdated: makeListenerSlot(),
+    onRemoved: makeListenerSlot(),
+    onActivated: makeListenerSlot(),
+    onMoved: makeListenerSlot(),
+    onAttached: makeListenerSlot(),
+    onDetached: makeListenerSlot(),
     query: jest.fn().mockResolvedValue([]),
     get: jest.fn(),
-    sendMessage: jest.fn()
+    sendMessage: jest.fn().mockResolvedValue(undefined)
   },
   windows: {
-    onFocusChanged: { addListener: jest.fn(), removeListener: jest.fn() },
+    onFocusChanged: makeListenerSlot(),
     WINDOW_ID_NONE: -1
   },
   runtime: {
-    onMessage: { addListener: jest.fn(), removeListener: jest.fn() },
-    sendMessage: jest.fn()
+    onMessage: makeListenerSlot(),
+    sendMessage: jest.fn().mockResolvedValue(undefined)
   },
   storage: {
-    onChanged: { addListener: jest.fn(), removeListener: jest.fn() }
+    onChanged: makeListenerSlot()
   },
   extension: {
     getViews: jest.fn().mockReturnValue([])
@@ -134,7 +162,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       await tracking.initialize();
     });
 
-    it.skip('should process tab events through the entire pipeline', async () => {
+    it('should process tab events through the entire pipeline', async () => {
       const tabEvent: TabEvent = {
         type: 'created',
         tabId: 1,
@@ -163,7 +191,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       expect(tabStates.size).toBe(1);
     });
 
-    it.skip('should handle session boundary detection', async () => {
+    it('should handle session boundary detection', async () => {
       // Mock session detection to return a boundary
       const mockBoundary = {
         sessionId: 'session_123',
@@ -219,7 +247,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       expect(metrics.queuedEvents).toBeGreaterThanOrEqual(0);
     });
 
-    it.skip('should synchronize data across contexts', async () => {
+    it('should synchronize data across contexts', async () => {
       const tabEvent: TabEvent = {
         type: 'activated',
         tabId: 1,
@@ -243,7 +271,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       await tracking.initialize();
     });
 
-    it.skip('should perform background tasks without blocking', async () => {
+    it('should perform background tasks without blocking', async () => {
       const startTime = Date.now();
       
       // Process some events
@@ -296,7 +324,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       await tracking.initialize();
     });
 
-    it.skip('should handle event bursts efficiently', async () => {
+    it('should handle event bursts efficiently', async () => {
       const eventCount = 100;
       const events: TabEvent[] = [];
 
@@ -312,24 +340,24 @@ describe('IntegratedTabLifecycleTracking', () => {
       }
 
       const startTime = performance.now();
-      
-      // Process all events
-      await Promise.all(events.map(event => tracking.processTabEvent(event)));
 
-      // Flush any debounced events
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Process all events. The debouncer dedupes by event key: 10 unique
+      // tabIds × 10 events per tab produces 10 pipeline runs plus 90 fast
+      // "duplicate" drops, so total work should stay small relative to
+      // eventCount even without a debounce flush.
+      await Promise.all(events.map(event => tracking.processTabEvent(event)));
 
       const endTime = performance.now();
       const processingTime = endTime - startTime;
 
-      // Should process efficiently (less than 1ms per event after debouncing)
+      // Should process efficiently (less than ~1ms per event after debouncing)
       expect(processingTime).toBeLessThan(eventCount * 1);
 
       const metrics = tracking.getMetrics();
       expect(metrics.averageProcessingTime).toBeGreaterThan(0);
     });
 
-    it.skip('should adapt to performance conditions', async () => {
+    it('should adapt to performance conditions', async () => {
       // Create performance pressure
       const heavyEvent: TabEvent = {
         type: 'created',
@@ -427,7 +455,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       expect(exported.systemInfo.exportedAt).toBeGreaterThan(0);
     });
 
-    it.skip('should include comprehensive metrics in export', () => {
+    it('should include comprehensive metrics in export', () => {
       const exported = tracking.exportState();
       const metrics = exported.metrics;
 
@@ -443,7 +471,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       await tracking.initialize();
     });
 
-    it.skip('should handle component failures gracefully', async () => {
+    it('should handle component failures gracefully', async () => {
       // Mock session detection failure
       (mockSessionDetection.processEvent as jest.Mock).mockRejectedValue(
         new Error('Session detection failed')
@@ -466,7 +494,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       expect(tabStates.size).toBeGreaterThan(0);
     });
 
-    it.skip('should recover from temporary failures', async () => {
+    it('should recover from temporary failures', async () => {
       // Simulate temporary failure
       let failureCount = 0;
       (mockSessionDetection.processEvent as jest.Mock).mockImplementation(() => {
@@ -492,16 +520,18 @@ describe('IntegratedTabLifecycleTracking', () => {
       expect(mockSessionDetection.processEvent).toHaveBeenCalledTimes(5);
     });
 
-    it.skip('should handle malformed events', async () => {
+    it('should handle malformed events', async () => {
       const malformedEvents = [
         { type: 'invalid' as any, tabId: 1, windowId: 1, timestamp: Date.now() },
         { type: 'created', tabId: undefined as any, windowId: 1, timestamp: Date.now() },
         { type: 'created', tabId: 1, windowId: 1, timestamp: 'invalid' as any }
       ];
 
-      // Should handle all malformed events without crashing
+      // Should handle all malformed events without crashing. processTabEvent
+      // is declared as Promise<SessionBoundary | null>, so verify it resolves
+      // (i.e. doesn't throw) — matcher `.toBeNull()` also accepts null returns.
       for (const event of malformedEvents) {
-        await expect(tracking.processTabEvent(event)).resolves.toBeUndefined();
+        await expect(tracking.processTabEvent(event)).resolves.toBeNull();
       }
 
       const metrics = tracking.getMetrics();
@@ -597,7 +627,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       }
     });
 
-    it.skip('should reset system state completely', async () => {
+    it('should reset system state completely', async () => {
       expect(tracking.getActiveTabStates().size).toBe(5);
 
       await tracking.reset();
@@ -609,7 +639,7 @@ describe('IntegratedTabLifecycleTracking', () => {
       expect(metrics.eventsProcessed).toBe(0);
     });
 
-    it.skip('should shutdown cleanly', async () => {
+    it('should shutdown cleanly', async () => {
       const shutdownPromise = tracking.shutdown();
 
       // Should complete within reasonable time

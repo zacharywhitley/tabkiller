@@ -30,6 +30,14 @@ const TAB_GAP = 4;
 const WINDOW_HEADER_HEIGHT = 22;
 const WINDOW_GAP = 10;
 const PAGE_LABEL_INDENT = 44;
+// Left-pane columns for labels (fixed; do not scroll horizontally).
+const LABEL_PANE_WIDTH = 420;
+const DOMAIN_COL_X = PAGE_LABEL_INDENT;
+const PATH_COL_X = PAGE_LABEL_INDENT + 160;
+// Default zoom: timeline pane is this multiple of its container width so it
+// is naturally horizontally scrollable / pan-draggable out of the gate.
+const TIMELINE_ZOOM = 2;
+const CANVAS_MAX_HEIGHT_PX = 700;
 
 interface VisitNodeShape {
   visit: VisitNode;
@@ -104,12 +112,14 @@ function urlPath(rawUrl: string): string {
 
 function computeLayout(
   data: WindowTabVisitWindow[],
-  width: number,
+  timelineWidth: number,
   windowStart: number,
   windowEnd: number,
 ): Layout {
-  const usableWidth = Math.max(200, width - 2 * CANVAS_PADDING);
+  const usableWidth = Math.max(200, timelineWidth - 2 * CANVAS_PADDING);
   const range = Math.max(1, windowEnd - windowStart);
+  // X coords in the timeline SVG are RELATIVE to the timeline pane (which
+  // scrolls independently of the label pane), NOT to the combined canvas.
   const timeToX = (t: number) => CANVAS_PADDING + ((t - windowStart) / range) * usableWidth;
 
   const nodesById = new Map<string, VisitNodeShape>();
@@ -250,7 +260,7 @@ function computeLayout(
   }
 
   const height = yCursor + CANVAS_PADDING;
-  return { nodes, edges, windows, width, height, ticks };
+  return { nodes, edges, windows, width: timelineWidth, height, ticks };
 }
 
 const RANGE_OPTIONS: ReadonlyArray<{ label: string; ms: number }> = [
@@ -265,14 +275,40 @@ const styles: Record<string, React.CSSProperties> = {
   header: { marginTop: 0, fontSize: 18, marginBottom: 8 },
   toolbar: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' },
   select: { padding: '4px 8px', fontSize: 12 },
-  canvas: { background: 'var(--tk-canvas-bg, #fff)', border: '1px solid #ccd0d5', width: '100%', overflow: 'auto' },
+  // Outer scroll wrapper: vertical scroll wraps both panes so they scroll
+  // vertically in sync.
+  canvasOuter: {
+    background: 'var(--tk-canvas-bg, #fff)',
+    border: '1px solid #ccd0d5',
+    width: '100%',
+    display: 'flex',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    maxHeight: CANVAS_MAX_HEIGHT_PX,
+  },
+  labelPane: {
+    width: LABEL_PANE_WIDTH,
+    flexShrink: 0,
+    borderRight: '1px solid #e5e7ea',
+    background: 'var(--tk-labelpane-bg, #fafbfc)',
+  },
+  timelinePane: {
+    flex: 1,
+    minWidth: 0,
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    cursor: 'grab',
+    userSelect: 'none',
+  },
+  timelinePaneDragging: { cursor: 'grabbing' },
   tooltip: { position: 'fixed', pointerEvents: 'none', background: 'rgba(20,20,20,0.95)', color: '#fff', padding: '6px 8px', fontSize: 11, borderRadius: 4, maxWidth: 360, zIndex: 1000, lineHeight: 1.4, wordBreak: 'break-all' },
   empty: { padding: 20, textAlign: 'center', opacity: 0.7 },
 };
 
 const darkOverrides = `
   @media (prefers-color-scheme: dark) {
-    .tk-ng__canvas { background: #26282c !important; border-color: #3a3d42 !important; }
+    .tk-ng__canvas-outer { background: #26282c !important; border-color: #3a3d42 !important; }
+    .tk-ng__label-pane { background: #23262b !important; border-right-color: #3a3d42 !important; }
     .tk-ng__axis { fill: #b0b3b7 !important; }
     .tk-ng__lane-label { fill: #a8abb0 !important; }
     .tk-ng__nodelabel { fill: #cdd0d5 !important; }
@@ -355,10 +391,38 @@ export const NodeGraphView: React.FC = () => {
     return () => globalThis.removeEventListener('resize', measure);
   }, []);
 
+  // Timeline pane width is (viewport minus label pane) × zoom multiplier.
+  // Makes the SVG wider than its container so it naturally scrolls and
+  // drag-to-pan feels correct out of the box.
+  const timelineViewportWidth = Math.max(400, width - LABEL_PANE_WIDTH);
+  const timelineSvgWidth = timelineViewportWidth * TIMELINE_ZOOM;
+
   const layout = useMemo(() => {
     if (!data) return null;
-    return computeLayout(data, width, windowRange[0], windowRange[1]);
-  }, [data, width, windowRange]);
+    return computeLayout(data, timelineSvgWidth, windowRange[0], windowRange[1]);
+  }, [data, timelineSvgWidth, windowRange]);
+
+  // Drag-to-pan on the timeline pane.
+  const timelinePaneRef = React.useRef<HTMLDivElement | null>(null);
+  const dragStateRef = React.useRef<{ startX: number; startScroll: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onTimelineMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const pane = timelinePaneRef.current;
+    if (!pane) return;
+    dragStateRef.current = { startX: e.clientX, startScroll: pane.scrollLeft };
+    setDragging(true);
+  }, []);
+  const onTimelineMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const drag = dragStateRef.current;
+    const pane = timelinePaneRef.current;
+    if (!drag || !pane) return;
+    pane.scrollLeft = drag.startScroll - (e.clientX - drag.startX);
+  }, []);
+  const endDrag = useCallback(() => {
+    dragStateRef.current = null;
+    setDragging(false);
+  }, []);
 
   useEffect(() => {
     if (!layout) return;
@@ -418,37 +482,22 @@ export const NodeGraphView: React.FC = () => {
       )}
 
       {layout && data && data.length > 0 && (
-        <div className="tk-ng__canvas" style={styles.canvas}>
-          <svg width={layout.width} height={layout.height} data-testid="tk-ng-svg">
-            <defs>
-              <marker id="tk-ng-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#666" />
-              </marker>
-            </defs>
-
-            {layout.ticks.map((t) => (
-              <text
-                key={t.x}
-                className="tk-ng__axis"
-                x={t.x}
-                y={16}
-                fontSize={10}
-                fill="#6b6f75"
-                fontFamily="ui-monospace, Menlo, monospace"
-                textAnchor="middle"
-              >
-                {t.label}
-              </text>
-            ))}
-
-            {/* Window bands (background stripe + header) */}
+        <div className="tk-ng__canvas-outer" style={styles.canvasOuter}>
+          {/* Left pane: window / tab / domain / path labels, fixed width,
+              no horizontal scroll — stays visible while the timeline pans. */}
+          <svg
+            className="tk-ng__label-pane"
+            width={LABEL_PANE_WIDTH}
+            height={layout.height}
+            style={styles.labelPane}
+          >
             {layout.windows.map((w) => (
               <g key={w.window.id}>
                 <rect
                   className="tk-ng__winband"
                   x={0}
                   y={w.y}
-                  width={layout.width}
+                  width={LABEL_PANE_WIDTH}
                   height={w.height}
                   fill="rgba(0,0,0,0.03)"
                 />
@@ -466,7 +515,6 @@ export const NodeGraphView: React.FC = () => {
               </g>
             ))}
 
-            {/* Tab headers */}
             {layout.windows.flatMap((w) =>
               w.tabs.map((t) => (
                 <text
@@ -486,9 +534,6 @@ export const NodeGraphView: React.FC = () => {
               )),
             )}
 
-            {/* Page lane labels — one per unique page in this tab. Domain
-                appears in a left column only on the first row of its
-                cluster so pages under the same domain read as a group. */}
             {layout.windows.flatMap((w) =>
               w.tabs.flatMap((t) =>
                 t.pageLanes.flatMap((p) => [
@@ -496,7 +541,7 @@ export const NodeGraphView: React.FC = () => {
                     <text
                       key={`${w.window.id}-${t.tab.id}-${p.laneKey}-dom`}
                       className="tk-ng__lane-label"
-                      x={PAGE_LABEL_INDENT}
+                      x={DOMAIN_COL_X}
                       y={p.labelY}
                       fontSize={10}
                       fontWeight={600}
@@ -510,7 +555,7 @@ export const NodeGraphView: React.FC = () => {
                   <text
                     key={`${w.window.id}-${t.tab.id}-${p.laneKey}-path`}
                     className="tk-ng__nodelabel"
-                    x={PAGE_LABEL_INDENT + 160}
+                    x={PATH_COL_X}
                     y={p.labelY}
                     fontSize={10}
                     fill="#3f4147"
@@ -523,42 +568,91 @@ export const NodeGraphView: React.FC = () => {
                 ]),
               ),
             )}
-
-            {/* Edges — drawn under nodes so nodes stay clickable */}
-            {edges.map((e) => (
-              <path
-                key={e.key}
-                className="tk-ng__edge"
-                d={e.path}
-                fill="none"
-                stroke="#888"
-                strokeWidth={1.2}
-                strokeDasharray={e.kind === 'opened_from' ? '4 3' : undefined}
-                markerEnd="url(#tk-ng-arrow)"
-                opacity={0.7}
-              />
-            ))}
-
-            {/* Visit nodes — dots only; the row IS the page, so per-node
-                text would repeat the row's path label. */}
-            {layout.nodes.map((n) => (
-              <circle
-                key={n.visit.id}
-                cx={n.cx}
-                cy={n.cy}
-                r={NODE_R}
-                fill={n.color.fill}
-                stroke={n.color.border}
-                strokeWidth={1.25}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={onNodeEnter(n)}
-                onMouseMove={onNodeMove}
-                onMouseLeave={onNodeLeave}
-                onClick={onNodeClick(n)}
-                data-testid="tk-ng-node"
-              />
-            ))}
           </svg>
+
+          {/* Right pane: time axis, edges, visit dots. Wider than the
+              container so it scrolls horizontally; click-and-drag to pan. */}
+          <div
+            ref={timelinePaneRef}
+            style={{
+              ...styles.timelinePane,
+              ...(dragging ? styles.timelinePaneDragging : {}),
+            }}
+            onMouseDown={onTimelineMouseDown}
+            onMouseMove={onTimelineMouseMove}
+            onMouseUp={endDrag}
+            onMouseLeave={endDrag}
+          >
+            <svg width={layout.width} height={layout.height} data-testid="tk-ng-svg">
+              <defs>
+                <marker id="tk-ng-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#666" />
+                </marker>
+              </defs>
+
+              {layout.ticks.map((t) => (
+                <text
+                  key={t.x}
+                  className="tk-ng__axis"
+                  x={t.x}
+                  y={16}
+                  fontSize={10}
+                  fill="#6b6f75"
+                  fontFamily="ui-monospace, Menlo, monospace"
+                  textAnchor="middle"
+                >
+                  {t.label}
+                </text>
+              ))}
+
+              {/* Window band backgrounds so the alternating stripe reads
+                  across the timeline the same way it does across the label
+                  pane. */}
+              {layout.windows.map((w) => (
+                <rect
+                  key={`${w.window.id}-timeline-band`}
+                  className="tk-ng__winband"
+                  x={0}
+                  y={w.y}
+                  width={layout.width}
+                  height={w.height}
+                  fill="rgba(0,0,0,0.03)"
+                />
+              ))}
+
+              {edges.map((e) => (
+                <path
+                  key={e.key}
+                  className="tk-ng__edge"
+                  d={e.path}
+                  fill="none"
+                  stroke="#888"
+                  strokeWidth={1.2}
+                  strokeDasharray={e.kind === 'opened_from' ? '4 3' : undefined}
+                  markerEnd="url(#tk-ng-arrow)"
+                  opacity={0.7}
+                />
+              ))}
+
+              {layout.nodes.map((n) => (
+                <circle
+                  key={n.visit.id}
+                  cx={n.cx}
+                  cy={n.cy}
+                  r={NODE_R}
+                  fill={n.color.fill}
+                  stroke={n.color.border}
+                  strokeWidth={1.25}
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={onNodeEnter(n)}
+                  onMouseMove={onNodeMove}
+                  onMouseLeave={onNodeLeave}
+                  onClick={onNodeClick(n)}
+                  data-testid="tk-ng-node"
+                />
+              ))}
+            </svg>
+          </div>
         </div>
       )}
 

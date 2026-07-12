@@ -80,6 +80,11 @@ export function getCurrentBrowserType(): BrowserType {
   return detectCurrentBrowser();
 }
 
+// Shortcut alias used across src/context-menu/shortcuts/*. Kept as a
+// distinct export because those callers import it by this exact name;
+// merging the names would break several files.
+export const getBrowserType = getCurrentBrowserType;
+
 /**
  * Quick access to common browser APIs through the global adapter
  */

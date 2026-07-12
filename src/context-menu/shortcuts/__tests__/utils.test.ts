@@ -8,6 +8,24 @@ import { KeyCombination } from '../types';
 
 describe('ShortcutUtils', () => {
   let utils: ShortcutUtilsImpl;
+  const originalPlatform = navigator.platform;
+
+  beforeAll(() => {
+    // The normalizer swaps ctrl ↔ meta based on detected platform (mac
+    // uses meta, others use ctrl). Pin the platform to Linux so the
+    // assertions read the same regardless of where the tests run.
+    Object.defineProperty(navigator, 'platform', {
+      value: 'Linux x86_64',
+      configurable: true,
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(navigator, 'platform', {
+      value: originalPlatform,
+      configurable: true,
+    });
+  });
 
   beforeEach(() => {
     utils = new ShortcutUtilsImpl();

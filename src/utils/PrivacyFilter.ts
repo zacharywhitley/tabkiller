@@ -503,9 +503,11 @@ export class PrivacyFilter {
   }
 
   /**
-   * Test if a URL would be filtered
+   * Test if a URL would be filtered. Async because evaluateEvent is;
+   * the previous sync signature returned an unresolved Promise as the
+   * "result" and every field on the returned object was undefined.
    */
-  testUrl(url: string): { allowed: boolean; reason?: string } {
+  async testUrl(url: string): Promise<{ allowed: boolean; reason?: string }> {
     try {
       const mockEvent: BrowsingEvent = {
         id: 'test',
@@ -515,16 +517,16 @@ export class PrivacyFilter {
         url,
         metadata: {}
       };
-      
-      const result = this.evaluateEvent(mockEvent);
-      return { 
-        allowed: result.allowed, 
-        reason: result.reason 
+
+      const result = await this.evaluateEvent(mockEvent);
+      return {
+        allowed: result.allowed,
+        reason: result.reason
       };
     } catch (error) {
-      return { 
-        allowed: false, 
-        reason: 'evaluation_error' 
+      return {
+        allowed: false,
+        reason: 'evaluation_error'
       };
     }
   }

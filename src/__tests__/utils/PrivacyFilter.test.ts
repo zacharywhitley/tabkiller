@@ -52,7 +52,9 @@ describe('PrivacyFilter', () => {
 
       const result = await privacyFilter.filter(safeEvent);
       expect(result).not.toBeNull();
-      expect(result?.url).toBe('https://example.com');
+      // URL constructor canonicalizes bare origins with a trailing slash;
+      // PrivacyFilter passes the URL through URL parsing internally.
+      expect(result?.url).toBe('https://example.com/');
     });
 
     it('should block events from excluded domains', async () => {
@@ -349,14 +351,14 @@ describe('PrivacyFilter', () => {
   });
 
   describe('URL testing', () => {
-    it('should test URL filtering without processing', () => {
+    it('should test URL filtering without processing', async () => {
       const safeUrl = 'https://example.com';
       const blockedUrl = 'https://blocked-site.com';
       const sensitiveUrl = 'https://example.com/login';
 
-      expect(privacyFilter.testUrl(safeUrl).allowed).toBe(true);
-      expect(privacyFilter.testUrl(blockedUrl).allowed).toBe(false);
-      expect(privacyFilter.testUrl(sensitiveUrl).allowed).toBe(false);
+      expect((await privacyFilter.testUrl(safeUrl)).allowed).toBe(true);
+      expect((await privacyFilter.testUrl(blockedUrl)).allowed).toBe(false);
+      expect((await privacyFilter.testUrl(sensitiveUrl)).allowed).toBe(false);
     });
   });
 

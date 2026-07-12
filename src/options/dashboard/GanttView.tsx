@@ -20,6 +20,7 @@ import { openTabsGrouped, windowsWithVisitsBetween } from '../../database/graph/
 import type { WindowTabVisitWindow } from '../../database/graph/queries';
 import type { PageNode, TabNode, VisitNode, WindowNode } from '../../database/graph/types';
 import { colorForDomain, hostnameOf } from './domainColor';
+import type { GraphStore } from '../../database/graph/store';
 
 const DEFAULT_WINDOW_MS = 0; // 0 = auto-fit
 const CANVAS_PADDING = 40;
@@ -48,6 +49,15 @@ interface TabRow {
   labelPath: string;
   color: ReturnType<typeof colorForDomain>;
   visits: Array<{ visit: VisitNode; page: PageNode | null; cx: number; color: ReturnType<typeof colorForDomain> }>;
+}
+
+interface OpenerEdge {
+  key: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  path: string;
 }
 
 interface WindowRow {
@@ -256,9 +266,40 @@ interface Hover {
   y: number;
 }
 
+async function walkOpenerEdges(
+  g: GraphStore,
+  visitIds: string[],
+  visitPosById: Map<string, { cx: number; cy: number }>,
+): Promise<OpenerEdge[]> {
+  const edges: OpenerEdge[] = [];
+  for (const id of visitIds) {
+    const outs = await g.outPoint(id, 'opened_from');
+    for (const e of outs) {
+      const from = visitPosById.get(id);
+      const to = visitPosById.get(e.to_id);
+      if (!from || !to) continue;
+      // Arc from child (from) up/down to parent (to). Bow outward so the
+      // arrow doesn't overlap the Tab bar it starts on.
+      const midX = (from.cx + to.cx) / 2;
+      const midY = from.cy === to.cy ? from.cy - 18 : (from.cy + to.cy) / 2;
+      const path = `M ${from.cx} ${from.cy} Q ${midX} ${midY}, ${to.cx} ${to.cy}`;
+      edges.push({
+        key: `opened_from::${id}->${e.to_id}`,
+        fromX: from.cx,
+        fromY: from.cy,
+        toX: to.cx,
+        toY: to.cy,
+        path,
+      });
+    }
+  }
+  return edges;
+}
+
 export const GanttView: React.FC = () => {
   const [rangeMs, setRangeMs] = useState<number>(DEFAULT_WINDOW_MS);
   const [data, setData] = useState<WindowTabVisitWindow[] | null>(null);
+  const [openerEdges, setOpenerEdges] = useState<OpenerEdge[]>([]);
   const [openTabCount, setOpenTabCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(1000);
@@ -273,6 +314,7 @@ export const GanttView: React.FC = () => {
     let cancelled = false;
     (async () => {
       setData(null);
+      setOpenerEdges([]);
       setError(null);
       try {
         const g = await openGraphStoreForDebug();
@@ -393,6 +435,33 @@ export const GanttView: React.FC = () => {
     return computeLayout(data, timelineSvgWidth, windowRange[0], windowRange[1], nowMs);
   }, [data, timelineSvgWidth, windowRange, nowMs]);
 
+  useEffect(() => {
+    if (!layout) return;
+    let cancelled = false;
+    (async () => {
+      const posById = new Map<string, { cx: number; cy: number }>();
+      const ids: string[] = [];
+      for (const w of layout.windows) {
+        for (const row of w.tabs) {
+          for (const v of row.visits) {
+            posById.set(v.visit.id, { cx: v.cx, cy: row.y });
+            ids.push(v.visit.id);
+          }
+        }
+      }
+      try {
+        const g = await openGraphStoreForDebug();
+        const es = await walkOpenerEdges(g, ids, posById);
+        if (!cancelled) setOpenerEdges(es);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [layout]);
+
   const timelinePaneRef = React.useRef<HTMLDivElement | null>(null);
   const dragStateRef = React.useRef<{ startX: number; startScroll: number } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -511,7 +580,7 @@ export const GanttView: React.FC = () => {
         </select>
         <span style={{ fontSize: 12, opacity: 0.7 }}>
           {data
-            ? `${data.length} windows · ${totalTabs} tabs (${openTabCount} open) · ${totalVisits} visits`
+            ? `${data.length} windows · ${totalTabs} tabs (${openTabCount} open) · ${totalVisits} visits · ${openerEdges.length} opener links`
             : ''}
         </span>
       </div>
@@ -596,6 +665,19 @@ export const GanttView: React.FC = () => {
               onMouseLeave={endDrag}
             >
               <svg width={layout.width} height={layout.height} data-testid="tk-gantt-svg">
+                <defs>
+                  <marker
+                    id="tk-gantt-arrow"
+                    viewBox="0 0 10 10"
+                    refX="9"
+                    refY="5"
+                    markerWidth="6"
+                    markerHeight="6"
+                    orient="auto-start-reverse"
+                  >
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#666" />
+                  </marker>
+                </defs>
                 {layout.ticks.map((t) => (
                   <text
                     key={t.x}
@@ -609,6 +691,19 @@ export const GanttView: React.FC = () => {
                   >
                     {t.label}
                   </text>
+                ))}
+
+                {openerEdges.map((e) => (
+                  <path
+                    key={e.key}
+                    d={e.path}
+                    fill="none"
+                    stroke="#888"
+                    strokeWidth={1.2}
+                    strokeDasharray="4 3"
+                    markerEnd="url(#tk-gantt-arrow)"
+                    opacity={0.7}
+                  />
                 ))}
 
                 {layout.windows.map((w) => (

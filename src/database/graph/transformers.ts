@@ -395,7 +395,20 @@ export async function transformTabCreated(
   // keyed by browser tab id; the next navigation_committed for this tab
   // will consume it. Still applies even for re-created tabs — a fresh
   // navigation event will consume the buffer.
-  const openerVisitId = event.metadata?.openerVisitId;
+  //
+  // The SW resolves openerVisitId from its own in-memory
+  // latestVisitByTab, which is empty right after an MV3 service-worker
+  // restart. When the SW couldn't resolve it, fall back to the ingest's
+  // graph-derived map so a Ctrl-clicked tab still gets an opened_from
+  // edge after the SW wakes.
+  let openerVisitId = event.metadata?.openerVisitId;
+  const openerTabId = event.metadata?.openerTabId;
+  if (
+    (typeof openerVisitId !== 'string' || openerVisitId.length === 0) &&
+    typeof openerTabId === 'number'
+  ) {
+    openerVisitId = ctx.previousVisitInTab(openerTabId) ?? undefined;
+  }
   if (typeof openerVisitId === 'string' && openerVisitId.length > 0) {
     ctx.putOpenerBuffer(event.tabId, openerVisitId);
   }

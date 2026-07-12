@@ -293,14 +293,19 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--tk-canvas-bg, #fff)',
     border: '1px solid #ccd0d5',
     width: '100%',
-    display: 'flex',
+    // Plain block with overflow-y auto so tall content scrolls
+    // internally. A `display: flex` container here would compress
+    // children and defeat the overflow.
     overflowY: 'auto',
     overflowX: 'hidden',
-    // Give the canvas nearly the full viewport height, subtracting a
-    // fixed budget for the panel title and the toolbar. Bigger than the
-    // previous `100vh - 200px` (which measured out to ~662 for the user
-    // — way too short) and smaller than the browser chrome would allow.
     height: 'calc(100vh - 100px)',
+  },
+  // Inner flex row lives inside canvasOuter — its height is set by its
+  // children (the two tall SVGs) so canvasOuter's overflow-y actually
+  // sees content taller than itself and scrolls.
+  canvasRow: {
+    display: 'flex',
+    minHeight: '100%',
   },
   labelPane: {
     width: LABEL_PANE_WIDTH,
@@ -528,6 +533,7 @@ export const NodeGraphView: React.FC = () => {
           className="tk-ng__canvas-outer"
           style={styles.canvasOuter}
         >
+        <div style={styles.canvasRow}>
           {/* Left pane: window / tab / domain / path labels, fixed width,
               no horizontal scroll — stays visible while the timeline pans. */}
           <svg
@@ -698,6 +704,7 @@ export const NodeGraphView: React.FC = () => {
               ))}
             </svg>
           </div>
+        </div>
         </div>
       )}
 

@@ -169,30 +169,56 @@ export class SessionStorageEngine {
       };
 
       request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        this.setupSchema(db, event.oldVersion, event.newVersion || DATABASE_VERSION);
+        const target = event.target as IDBOpenDBRequest;
+        const db = target.result;
+        const tx = target.transaction;
+        this.setupSchema(db, tx, event.oldVersion, event.newVersion || DATABASE_VERSION);
       };
     });
   }
 
   /**
-   * Setup database schema during upgrade
+   * Setup database schema during upgrade.
+   *
+   * For each object store: create it if missing, and also create any
+   * indexes defined in the schema but not yet present on the store.
+   * The upgrade transaction is provided by IDB (`versionchange`) — we
+   * use it to open existing stores so they can gain new indexes without
+   * a destructive migration. Removing an index that has been dropped
+   * from the schema is not currently handled; we've never dropped one.
    */
-  private setupSchema(db: IDBDatabase, oldVersion: number, newVersion: number): void {
+  private setupSchema(
+    db: IDBDatabase,
+    tx: IDBTransaction | null,
+    oldVersion: number,
+    newVersion: number,
+  ): void {
     console.log(`Upgrading database schema from ${oldVersion} to ${newVersion}`);
 
-    // Create object stores if they don't exist
     for (const storeName of Object.values(STORE_NAMES)) {
+      const storeConfig = createStoreConfig(storeName);
+
+      let store: IDBObjectStore;
       if (!db.objectStoreNames.contains(storeName)) {
-        const storeConfig = createStoreConfig(storeName);
-        const store = db.createObjectStore(storeName, storeConfig.options);
+        store = db.createObjectStore(storeName, storeConfig.options);
+        console.log(`Created object store: ${storeName}`);
+      } else if (tx) {
+        store = tx.objectStore(storeName);
+      } else {
+        // No transaction available (shouldn't happen under versionchange);
+        // skip index reconciliation for this store.
+        continue;
+      }
 
-        // Create indexes
-        for (const indexConfig of storeConfig.indexes) {
+      let added = 0;
+      for (const indexConfig of storeConfig.indexes) {
+        if (!store.indexNames.contains(indexConfig.name)) {
           store.createIndex(indexConfig.name, indexConfig.keyPath, indexConfig.options);
+          added++;
         }
-
-        console.log(`Created object store: ${storeName} with ${storeConfig.indexes.length} indexes`);
+      }
+      if (added > 0) {
+        console.log(`Added ${added} index(es) to ${storeName}`);
       }
     }
   }

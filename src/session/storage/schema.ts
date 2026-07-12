@@ -10,7 +10,7 @@ import { BrowsingSession, TabInfo, NavigationEvent, SessionBoundary } from '../.
 // =============================================================================
 
 export const DATABASE_NAME = 'TabKillerSessions';
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 // Object store names
 export const STORE_NAMES = {
@@ -57,6 +57,13 @@ export const INDEX_NAMES = {
   // field, plus node-type-specific single-field indexes for identity
   // lookups. Non-matching records (missing the keyPath) are simply
   // skipped by IndexedDB.
+  // Plain `type` index. Powers nodesOfType() without a full-store scan.
+  // The (type, at_time) compound index skips nodes with no at_time field
+  // (Tab, Window, Page, Session, Domain, Tag, SearchQuery), so callers
+  // like windowsWithVisitsBetween and openTabsGrouped were previously
+  // paying an O(all-nodes) scan-and-filter on every load. Added in
+  // DATABASE_VERSION 3.
+  GRAPH_NODE_BY_TYPE: 'by_type',
   GRAPH_NODE_BY_TYPE_AT_TIME: 'by_type_at_time',
   GRAPH_NODE_BY_PAGE_NORMALIZED_URL: 'by_page_normalized_url',
   GRAPH_NODE_BY_DOMAIN_HOSTNAME: 'by_domain_hostname',
@@ -306,6 +313,11 @@ export interface DatabaseSchema {
     keyPath: 'id';
     autoIncrement: false;
     indexes: {
+      [INDEX_NAMES.GRAPH_NODE_BY_TYPE]: {
+        keyPath: 'type';
+        unique: false;
+        multiEntry: false;
+      };
       [INDEX_NAMES.GRAPH_NODE_BY_TYPE_AT_TIME]: {
         keyPath: ['type', 'at_time'];
         unique: false;
@@ -518,6 +530,11 @@ export function getSchemaDefinition(): DatabaseSchema {
       keyPath: 'id',
       autoIncrement: false,
       indexes: {
+        [INDEX_NAMES.GRAPH_NODE_BY_TYPE]: {
+          keyPath: 'type',
+          unique: false,
+          multiEntry: false
+        },
         [INDEX_NAMES.GRAPH_NODE_BY_TYPE_AT_TIME]: {
           keyPath: ['type', 'at_time'],
           unique: false,

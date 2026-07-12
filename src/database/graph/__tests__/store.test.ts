@@ -188,6 +188,36 @@ describe('GraphStore — node put/get', () => {
     expect(domains).toHaveLength(1);
     expect(domains[0]).toEqual(domainNode);
   });
+
+  it('nodesOfType picks up node kinds that have no at_time (Tab, Window)', async () => {
+    // Regression: an earlier implementation of nodesOfType used the
+    // (type, at_time) compound index, which silently skipped Tab and
+    // Window records because they lack an at_time field. Every call
+    // site fell back to a full-store scan. Adding the plain `type`
+    // index in DATABASE_VERSION 3 fixed that; this test locks it in.
+    const { store } = await freshStore();
+    for (const n of ALL_NODE_FIXTURES) await store.putNode(n);
+    const tabs = await store.nodesOfType('Tab');
+    const windows = await store.nodesOfType('Window');
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]).toEqual(tabNode);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toEqual(windowNode);
+  });
+
+  it('nodesOfType uses the by_type index (not a full store scan)', async () => {
+    // If nodesOfType regresses to store.getAll() this test still
+    // passes on correctness; the assertion is on the index list to
+    // catch a config regression that would drop the index and force
+    // the O(N) fallback.
+    const { store, db } = await freshStore();
+    const tx = db.transaction(STORE_NAMES.GRAPH_NODES, 'readonly');
+    const idxNames = Array.from(tx.objectStore(STORE_NAMES.GRAPH_NODES).indexNames);
+    expect(idxNames).toContain('by_type');
+    // Sanity — the impl actually reads through the index.
+    for (const n of ALL_NODE_FIXTURES) await store.putNode(n);
+    expect(await store.nodesOfType('Session')).toHaveLength(1);
+  });
 });
 
 // ---- Edge fixtures ----

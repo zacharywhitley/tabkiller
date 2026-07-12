@@ -119,13 +119,16 @@ export class GraphStore {
   }
 
   async nodesOfType<T extends AnyNode>(type: NodeType): Promise<T[]> {
-    // For nodes without at_time (Page, Tab, Window, Session, Domain, Tag,
-    // SearchQuery) the compound (type, at_time) index will skip them.
-    // Fall back to a full scan filtered by type.
+    // Range-scan the `type` single-field index. Beats the older
+    // full-store getAll() + JS filter by O(nodes-of-other-types), which
+    // dominates as browsing history grows. The (type, at_time) compound
+    // index couldn't do this job because it skips records without an
+    // at_time field (Tab, Window, Page, Session, Domain, Tag,
+    // SearchQuery all lack it).
     const tx = this.db.transaction(STORE_NAMES.GRAPH_NODES, 'readonly');
     const store = tx.objectStore(STORE_NAMES.GRAPH_NODES);
-    const all = await awaitRequest<AnyNode[]>(store.getAll());
-    return all.filter((n): n is T => n.type === type) as T[];
+    const index = store.index(INDEX_NAMES.GRAPH_NODE_BY_TYPE);
+    return awaitRequest<T[]>(index.getAll(IDBKeyRange.only(type)));
   }
 
   // ---- Read: edges ----

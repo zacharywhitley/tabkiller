@@ -784,14 +784,23 @@ export interface WindowTabVisitWindow {
  *   opened_at <= tTo AND (closed_at == null OR closed_at > tFrom)
  * Same rule for a Tab and a Visit. A Visit is placed under the Tab named
  * by its `in_tab` edge; a Tab is placed under the Window named by its
- * `in_window` edge. Empty Tabs and empty Windows are omitted so the graph
- * doesn't grow lanes for containers with nothing to show.
+ * `in_window` edge.
+ *
+ * `includeEmpty` toggles between the Node Graph and Gantt use cases:
+ *   - `false` (default): omit Tabs with zero visits and Windows with zero
+ *     tabs. The Node Graph only draws dots, so a lane without dots is
+ *     visual noise.
+ *   - `true`: keep every Tab and Window that overlaps the range, even
+ *     with no visits. The Gantt draws a lifetime bar per Tab and Window
+ *     so an empty container is still a meaningful row.
  */
 export async function windowsWithVisitsBetween(
   g: GraphStore,
   tFrom: number,
   tTo: number,
+  opts: { includeEmpty?: boolean } = {},
 ): Promise<WindowTabVisitWindow[]> {
+  const includeEmpty = opts.includeEmpty === true;
   const overlaps = (
     opened: number,
     closed: number | null,
@@ -822,12 +831,7 @@ export async function windowsWithVisitsBetween(
   const tabsByWindow = new Map<string, WindowTabVisitTab[]>();
   for (const tab of tabs) {
     const tabVisits = visitsByTab.get(tab.id) ?? [];
-    // Only include tabs that actually have captured browsing. Landed on
-    // this rule after iterating: empty tab rows visible in the label
-    // pane read as noise, and users need dot-content to make the row
-    // useful. The toolbar exposes the "N with browsing / M open" ratio
-    // so the count discrepancy vs. the Tabs view stays legible.
-    if (tabVisits.length === 0) continue;
+    if (!includeEmpty && tabVisits.length === 0) continue;
     tabVisits.sort((a, b) => a.visit.at_time - b.visit.at_time);
     const winEdge = (await g.outInterval(tab.id, 'in_window'))[0];
     if (!winEdge) continue;
@@ -840,8 +844,8 @@ export async function windowsWithVisitsBetween(
 
   const result: WindowTabVisitWindow[] = [];
   for (const window of windows) {
-    const winTabs = tabsByWindow.get(window.id);
-    if (!winTabs || winTabs.length === 0) continue;
+    const winTabs = tabsByWindow.get(window.id) ?? [];
+    if (!includeEmpty && winTabs.length === 0) continue;
     winTabs.sort((a, b) => a.tab.opened_at - b.tab.opened_at);
     result.push({ window, tabs: winTabs });
   }

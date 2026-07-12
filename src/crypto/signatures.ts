@@ -102,17 +102,23 @@ export class DigitalSignatureService {
   async sign(
     data: string | ArrayBuffer,
     privateKey: CryptoKey,
-    algorithm?: SignatureAlgorithm
+    algorithm?: SignatureAlgorithm,
+    publicKey?: CryptoKey
   ): Promise<DigitalSignature> {
     const cleanup = new AutoCleanup();
     const sigAlgorithm = algorithm || this.config.algorithm;
 
     try {
-      // Convert string data to ArrayBuffer
-      const dataBuffer = typeof data === 'string' 
-        ? stringToArrayBuffer(data) 
+      // Convert string data to ArrayBuffer. Only register the buffer
+      // for cleanup when we allocated it — the caller still owns any
+      // ArrayBuffer they passed in and zeroing it here would corrupt
+      // data they use after sign returns.
+      const dataBuffer = typeof data === 'string'
+        ? stringToArrayBuffer(data)
         : data;
-      cleanup.addBuffer(dataBuffer);
+      if (typeof data === 'string') {
+        cleanup.addBuffer(dataBuffer);
+      }
 
       // Determine signature algorithm parameters
       const algorithmSpec = this.getSignatureAlgorithmSpec(sigAlgorithm);
@@ -124,10 +130,17 @@ export class DigitalSignatureService {
         dataBuffer
       );
 
-      // Export public key for verification
-      const publicKeyData = await exportPublicKey(
-        await this.getPublicKeyFromPrivate(privateKey, sigAlgorithm)
-      );
+      // Export public key for verification. Web Crypto can't derive
+      // the public half from a private key generically, so require the
+      // caller to pass the matching publicKey for self-verifying
+      // signatures. Fall back to the (approximate) private-key
+      // derivation only if none was provided, to preserve behavior
+      // for callers that always pass an explicit verify key.
+      const publicKeyData = publicKey
+        ? await exportPublicKey(publicKey)
+        : await exportPublicKey(
+            await this.getPublicKeyFromPrivate(privateKey, sigAlgorithm)
+          );
 
       return {
         signature: arrayBufferToBase64(signature),
@@ -157,14 +170,17 @@ export class DigitalSignatureService {
     const cleanup = new AutoCleanup();
 
     try {
-      // Convert string data to ArrayBuffer
-      const dataBuffer = typeof data === 'string' 
-        ? stringToArrayBuffer(data) 
+      // Convert string data to ArrayBuffer. Only register the buffer
+      // for cleanup when we allocated it — see matching note in sign().
+      const dataBuffer = typeof data === 'string'
+        ? stringToArrayBuffer(data)
         : data;
-      cleanup.addBuffer(dataBuffer);
+      if (typeof data === 'string') {
+        cleanup.addBuffer(dataBuffer);
+      }
 
       // Use provided public key or import from signature
-      const verificationKey = publicKey || 
+      const verificationKey = publicKey ||
         await importPublicKey(signature.publicKey, signature.algorithm);
 
       // Parse signature data

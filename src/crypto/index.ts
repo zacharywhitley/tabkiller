@@ -242,11 +242,15 @@ export class CryptographyService {
       // Encrypt data
       const encrypted = await this.encryption.encrypt(serialized, encryptionKey);
 
-      // Create signature key pair for integrity
+      // Create signature key pair for integrity. Pass the publicKey
+      // through so restoreFromStorage's self-verifying verify() has a
+      // matching key — Web Crypto can't derive it from privateKey.
       const signingKeyPair = await this.signatures.generateKeyPair();
       const signature = await this.signatures.sign(
         JSON.stringify(encrypted),
-        signingKeyPair.privateKey
+        signingKeyPair.privateKey,
+        undefined,
+        signingKeyPair.publicKey
       );
 
       // Create metadata

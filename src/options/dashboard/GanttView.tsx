@@ -8,9 +8,10 @@
  * the range for still-open items). Each Visit renders as a small dot at
  * `at_time` on its Tab's bar.
  *
- * Unlike the Node Graph, empty Tabs (no captured visits) are included —
- * a Tab is a bar in its own right and dropping it would lie about the
- * user's actual browsing session.
+ * Tabs without captured visits are omitted, same rule as the Node
+ * Graph — a bar with no dots reads as noise and adds row height for
+ * containers we can't tell you anything about. The toolbar exposes the
+ * "N tabs / M open" ratio so the mismatch stays legible.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -277,9 +278,7 @@ export const GanttView: React.FC = () => {
         const g = await openGraphStoreForDebug();
         const t = Date.now();
         const initialFrom = rangeMs === 0 ? t - 30 * 24 * 60 * 60 * 1000 : t - rangeMs;
-        let result = await windowsWithVisitsBetween(g, initialFrom, t, {
-          includeEmpty: true,
-        });
+        let result = await windowsWithVisitsBetween(g, initialFrom, t);
         let from = initialFrom;
         if (rangeMs === 0) {
           let earliest = Number.POSITIVE_INFINITY;
@@ -294,7 +293,7 @@ export const GanttView: React.FC = () => {
           }
           if (earliest === Number.POSITIVE_INFINITY) {
             from = 0;
-            result = await windowsWithVisitsBetween(g, from, t, { includeEmpty: true });
+            result = await windowsWithVisitsBetween(g, from, t);
           } else {
             const span = Math.max(60_000, t - earliest);
             from = earliest - span * 0.02;

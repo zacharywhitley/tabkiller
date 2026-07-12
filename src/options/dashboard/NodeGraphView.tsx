@@ -30,10 +30,13 @@ const TAB_GAP = 4;
 const WINDOW_HEADER_HEIGHT = 22;
 const WINDOW_GAP = 10;
 const PAGE_LABEL_INDENT = 44;
-// Left-pane columns for labels (fixed; do not scroll horizontally).
-const LABEL_PANE_WIDTH = 420;
+// Left-pane columns for labels (fixed; do not scroll horizontally). Held
+// at 300 px so users with narrow browser windows still get meaningful
+// horizontal space for the timeline. Path labels beyond the pane clip;
+// hover reveals the full URL.
+const LABEL_PANE_WIDTH = 300;
 const DOMAIN_COL_X = PAGE_LABEL_INDENT;
-const PATH_COL_X = PAGE_LABEL_INDENT + 160;
+const PATH_COL_X = PAGE_LABEL_INDENT + 100;
 // Default zoom: timeline pane is this multiple of its container width so it
 // is naturally horizontally scrollable / pan-draggable out of the gate.
 const TIMELINE_ZOOM = 2;

@@ -168,7 +168,10 @@ export function layoutTimeline(input: LayoutInput): TimelineLayout {
   // [tFrom, tTo] get a lane. Otherwise scrolling / zooming leaves
   // dead lanes for tabs whose visits are entirely off-screen, and
   // the row list grows without bound as history accumulates.
+  // Reload visits are dropped — they clutter the timeline without
+  // new "where did you go" information.
   const visibleRows = rows.filter((row) => {
+    if (row.visit.transition === 'reload') return false;
     const start = row.visit.at_time;
     const end = row.visit.ended_at ?? now;
     return start <= tTo && end >= tFrom;

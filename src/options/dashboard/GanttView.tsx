@@ -448,17 +448,24 @@ export const GanttView: React.FC = () => {
     // A Tab or Window is "visibly open" during [vFrom, vTo] if its
     // lifetime intersects that interval. Rows for tabs whose entire
     // lifetime is off-screen disappear so the row list only shows
-    // browsing that is actually visible.
+    // browsing that is actually visible. Reload visits are also
+    // dropped everywhere — they add clutter without new information
+    // about where you went.
     const out: WindowTabVisitWindow[] = [];
     for (const w of data) {
       const wOpened = w.window.opened_at;
       const wClosed = w.window.closed_at ?? Number.POSITIVE_INFINITY;
       if (wOpened > vTo || wClosed < vFrom) continue;
-      const tabs = w.tabs.filter((t) => {
-        const opened = t.tab.opened_at;
-        const closed = t.tab.closed_at ?? Number.POSITIVE_INFINITY;
-        return opened <= vTo && closed >= vFrom;
-      });
+      const tabs = w.tabs
+        .filter((t) => {
+          const opened = t.tab.opened_at;
+          const closed = t.tab.closed_at ?? Number.POSITIVE_INFINITY;
+          return opened <= vTo && closed >= vFrom;
+        })
+        .map((t) => ({
+          ...t,
+          visits: t.visits.filter((v) => v.visit.transition !== 'reload'),
+        }));
       if (tabs.length === 0) continue;
       out.push({ ...w, tabs });
     }

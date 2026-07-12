@@ -541,7 +541,10 @@ export const NodeGraphView: React.FC = () => {
       const tabs: typeof w.tabs = [];
       for (const t of w.tabs) {
         const visits = t.visits.filter(
-          (v) => v.visit.at_time >= vFrom && v.visit.at_time <= vTo,
+          (v) =>
+            v.visit.at_time >= vFrom &&
+            v.visit.at_time <= vTo &&
+            v.visit.transition !== 'reload',
         );
         if (visits.length === 0) continue;
         tabs.push({ ...t, visits });

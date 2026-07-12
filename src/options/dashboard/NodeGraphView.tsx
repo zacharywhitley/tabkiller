@@ -23,10 +23,13 @@ import { colorForDomain, hostnameOf } from './domainColor';
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CANVAS_PADDING = 40;
 const AXIS_HEIGHT = 24;
-const NODE_R = 6;
-const TAB_LANE_HEIGHT = 24;
+const NODE_R = 5;
+const PAGE_LANE_HEIGHT = 20;
+const TAB_HEADER_HEIGHT = 18;
+const TAB_GAP = 4;
 const WINDOW_HEADER_HEIGHT = 22;
-const WINDOW_GAP = 8;
+const WINDOW_GAP = 10;
+const PAGE_LABEL_INDENT = 44;
 
 interface VisitNodeShape {
   visit: VisitNode;
@@ -47,11 +50,20 @@ interface EdgeShape {
   path: string;
 }
 
+interface PageLane {
+  pageKey: string;
+  labelY: number;
+  y: number;
+  label: string;
+  visitCount: number;
+}
+
 interface TabBand {
   tab: TabNode;
   y: number;
+  height: number;
   labelY: number;
-  visitIds: string[];
+  pageLanes: PageLane[];
 }
 
 interface WindowBand {
@@ -101,21 +113,45 @@ function computeLayout(
   let yCursor = AXIS_HEIGHT + CANVAS_PADDING;
   for (const w of data) {
     const winY = yCursor;
-    const labelY = winY + 14;
-    const tabsY0 = winY + WINDOW_HEADER_HEIGHT;
+    const winLabelY = winY + 14;
+    let tabCursor = winY + WINDOW_HEADER_HEIGHT;
     const tabBands: TabBand[] = [];
-    let laneIndex = 0;
     for (const t of w.tabs) {
-      const laneY = tabsY0 + laneIndex * TAB_LANE_HEIGHT + TAB_LANE_HEIGHT / 2;
-      const visitIds: string[] = [];
+      const tabY = tabCursor;
+      const tabLabelY = tabY + 12;
+
+      // Group this tab's visits by Page (using page.id when present; empty
+      // string for visits without a Page). First-visit-in-this-tab
+      // determines the row order so a tab reads top-to-bottom in the order
+      // the pages first arrived.
+      const laneByPageKey = new Map<string, PageLane>();
+      const laneOrder: string[] = [];
+      const laneStartY = tabY + TAB_HEADER_HEIGHT;
       for (const { visit, page } of t.visits) {
+        const pageKey = page?.id ?? `__nopage__:${visit.id}`;
+        let lane = laneByPageKey.get(pageKey);
+        if (!lane) {
+          const rawUrl = page?.raw_url_first_seen || page?.normalized_url || '(no page)';
+          const label = shortLabel(rawUrl, page?.title);
+          const laneY = laneStartY + laneOrder.length * PAGE_LANE_HEIGHT + PAGE_LANE_HEIGHT / 2;
+          lane = {
+            pageKey,
+            y: laneY,
+            labelY: laneY + 3,
+            label,
+            visitCount: 0,
+          };
+          laneByPageKey.set(pageKey, lane);
+          laneOrder.push(pageKey);
+        }
+        lane.visitCount += 1;
         const url = page?.raw_url_first_seen || page?.normalized_url || '';
         const domain = url ? hostnameOf(url) : '(no page)';
         const node: VisitNodeShape = {
           visit,
           page,
           cx: timeToX(visit.at_time),
-          cy: laneY,
+          cy: lane.y,
           color: colorForDomain(domain),
           domain,
           tabId: t.tab.id,
@@ -123,22 +159,24 @@ function computeLayout(
         };
         nodes.push(node);
         nodesById.set(visit.id, node);
-        visitIds.push(visit.id);
       }
+
+      const tabHeight = TAB_HEADER_HEIGHT + laneOrder.length * PAGE_LANE_HEIGHT;
       tabBands.push({
         tab: t.tab,
-        y: laneY,
-        labelY: laneY + 3,
-        visitIds,
+        y: tabY,
+        height: tabHeight,
+        labelY: tabLabelY,
+        pageLanes: laneOrder.map((k) => laneByPageKey.get(k)!),
       });
-      laneIndex++;
+      tabCursor += tabHeight + TAB_GAP;
     }
-    const bandHeight = WINDOW_HEADER_HEIGHT + laneIndex * TAB_LANE_HEIGHT;
+    const bandHeight = tabCursor - winY;
     windows.push({
       window: w.window,
       y: winY,
       height: bandHeight,
-      labelY,
+      labelY: winLabelY,
       tabs: tabBands,
     });
     yCursor += bandHeight + WINDOW_GAP;
@@ -393,23 +431,45 @@ export const NodeGraphView: React.FC = () => {
               </g>
             ))}
 
-            {/* Tab lane labels */}
+            {/* Tab headers */}
             {layout.windows.flatMap((w) =>
               w.tabs.map((t) => (
                 <text
-                  key={`${w.window.id}-${t.tab.id}-lbl`}
+                  key={`${w.window.id}-${t.tab.id}-tab`}
                   className="tk-ng__lane-label"
                   x={22}
                   y={t.labelY}
-                  fontSize={10}
-                  fill="#8a8d92"
+                  fontSize={11}
+                  fontWeight={600}
+                  fill="#5e6167"
                   fontFamily="ui-monospace, Menlo, monospace"
                   style={{ pointerEvents: 'none' }}
                 >
                   Tab #{t.tab.browser_tab_id}
-                  {t.tab.closed_at != null ? ' ✕' : ''}
+                  {t.tab.closed_at != null ? ' ✕' : ''} · {t.pageLanes.length} page{t.pageLanes.length === 1 ? '' : 's'}
                 </text>
               )),
+            )}
+
+            {/* Page lane labels — one per unique page in this tab */}
+            {layout.windows.flatMap((w) =>
+              w.tabs.flatMap((t) =>
+                t.pageLanes.map((p) => (
+                  <text
+                    key={`${w.window.id}-${t.tab.id}-${p.pageKey}`}
+                    className="tk-ng__nodelabel"
+                    x={PAGE_LABEL_INDENT}
+                    y={p.labelY}
+                    fontSize={10}
+                    fill="#3f4147"
+                    fontFamily="ui-monospace, Menlo, monospace"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {p.label}
+                    {p.visitCount > 1 ? ` (${p.visitCount})` : ''}
+                  </text>
+                )),
+              ),
             )}
 
             {/* Edges — drawn under nodes so nodes stay clickable */}
@@ -427,36 +487,24 @@ export const NodeGraphView: React.FC = () => {
               />
             ))}
 
-            {/* Visit nodes */}
+            {/* Visit nodes — dots only; the row IS the page, so per-node text
+                would be redundant. */}
             {layout.nodes.map((n) => (
-              <g
+              <circle
                 key={n.visit.id}
+                cx={n.cx}
+                cy={n.cy}
+                r={NODE_R}
+                fill={n.color.fill}
+                stroke={n.color.border}
+                strokeWidth={1.25}
+                style={{ cursor: 'pointer' }}
                 onMouseEnter={onNodeEnter(n)}
                 onMouseMove={onNodeMove}
                 onMouseLeave={onNodeLeave}
                 onClick={onNodeClick(n)}
-                style={{ cursor: 'pointer' }}
                 data-testid="tk-ng-node"
-              >
-                <circle
-                  cx={n.cx}
-                  cy={n.cy}
-                  r={NODE_R}
-                  fill={n.color.fill}
-                  stroke={n.color.border}
-                  strokeWidth={1.5}
-                />
-                <text
-                  x={n.cx + NODE_R + 4}
-                  y={n.cy + 3}
-                  fontSize={10}
-                  fill="#3f4147"
-                  className="tk-ng__nodelabel"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {shortLabel(n.page?.raw_url_first_seen || n.page?.normalized_url || '', n.page?.title)}
-                </text>
-              </g>
+              />
             ))}
           </svg>
         </div>

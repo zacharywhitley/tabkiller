@@ -23,11 +23,14 @@ interface Props {
 
 const styles: Record<string, React.CSSProperties> = {
   // The dashboard main pane is flex-column with overflow:auto and forces
-  // min-height:0 on every direct child. Returning a bare fragment made
-  // every row a separate flex item, so once the content exceeded the
-  // pane height flex-shrink squashed the row heights while the text
-  // inside didn't shrink — cards overlapped their neighbors.
-  root: { display: 'flex', flexDirection: 'column', minHeight: 0, width: '100%' },
+  // min-height:0 on every direct child. Two constraints matter here:
+  // (1) we need exactly one flex item in the pane, so the pane's own
+  // shrinkage rule can't compress individual rows; (2) the wrapper
+  // itself must NOT be another flex-column, otherwise the same
+  // pattern nests and its own children (the h2 + rows) get squashed.
+  // Plain block layout inside — the pane's overflow:auto handles the
+  // scrolling.
+  root: { width: '100%' },
   header: { marginTop: 0, fontSize: 18, marginBottom: 12, flexShrink: 0 },
   card: { display: 'flex', gap: 12, alignItems: 'flex-start', padding: 12, marginBottom: 8, background: 'var(--tk-card-bg, #fff)', border: '1px solid var(--tk-card-border, #dcdfe4)', borderRadius: 6, cursor: 'pointer', flexShrink: 0 },
   meta: { flex: 1, minWidth: 0 },

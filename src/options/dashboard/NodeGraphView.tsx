@@ -509,10 +509,38 @@ export const NodeGraphView: React.FC = () => {
   const timelineViewportWidth = Math.max(400, width - labelPaneWidth - SPLITTER_WIDTH);
   const timelineSvgWidth = timelineViewportWidth * TIMELINE_ZOOM;
 
-  const layout = useMemo(() => {
+  // Visible slice of the timeline based on horizontal scroll. Rows for
+  // pages whose visits are entirely off-screen drop out — the graph is
+  // visit-centric so an empty page-lane isn't useful. Null until the
+  // pane has mounted; the layout falls back to full data until then.
+  const [visibleWindow, setVisibleWindow] = useState<[number, number] | null>(null);
+
+  const visibleData = useMemo(() => {
     if (!data) return null;
-    return computeLayout(data, timelineSvgWidth, windowRange[0], windowRange[1]);
-  }, [data, timelineSvgWidth, windowRange]);
+    if (!visibleWindow) return data;
+    const [vFrom, vTo] = visibleWindow;
+    const out: WindowTabVisitWindow[] = [];
+    for (const w of data) {
+      const tabs: typeof w.tabs = [];
+      for (const t of w.tabs) {
+        const visits = t.visits.filter((v) => {
+          const start = v.visit.at_time;
+          const end = v.visit.ended_at ?? Number.POSITIVE_INFINITY;
+          return start <= vTo && end >= vFrom;
+        });
+        if (visits.length === 0) continue;
+        tabs.push({ ...t, visits });
+      }
+      if (tabs.length === 0) continue;
+      out.push({ ...w, tabs });
+    }
+    return out;
+  }, [data, visibleWindow]);
+
+  const layout = useMemo(() => {
+    if (!visibleData) return null;
+    return computeLayout(visibleData, timelineSvgWidth, windowRange[0], windowRange[1]);
+  }, [visibleData, timelineSvgWidth, windowRange]);
 
   // Drag-to-pan on the timeline pane.
   const timelinePaneRef = React.useRef<HTMLDivElement | null>(null);
@@ -536,6 +564,36 @@ export const NodeGraphView: React.FC = () => {
     dragStateRef.current = null;
     setDragging(false);
   }, []);
+
+  // Track scroll position → time window. See GanttView for the shape
+  // of this effect; the two are intentionally identical because both
+  // views share the label-pane-plus-scroll-timeline structure.
+  useEffect(() => {
+    if (!data) return;
+    const pane = timelinePaneRef.current;
+    if (!pane) return;
+    let raf: number | null = null;
+    const compute = () => {
+      if (timelineSvgWidth <= 0) return;
+      const total = windowRange[1] - windowRange[0];
+      const from = windowRange[0] + (pane.scrollLeft / timelineSvgWidth) * total;
+      const to = windowRange[0] + ((pane.scrollLeft + pane.clientWidth) / timelineSvgWidth) * total;
+      setVisibleWindow([from, to]);
+    };
+    compute();
+    const onScroll = () => {
+      if (raf != null) return;
+      raf = requestAnimationFrame(() => {
+        compute();
+        raf = null;
+      });
+    };
+    pane.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      pane.removeEventListener('scroll', onScroll);
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, [data, timelineSvgWidth, windowRange]);
 
   useEffect(() => {
     if (!layout) return;

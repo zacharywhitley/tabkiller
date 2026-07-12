@@ -435,10 +435,40 @@ export const GanttView: React.FC = () => {
   const timelineViewportWidth = Math.max(400, width - labelPaneWidth - SPLITTER_WIDTH);
   const timelineSvgWidth = timelineViewportWidth * TIMELINE_ZOOM;
 
-  const layout = useMemo(() => {
+  // The visible slice of the timeline based on horizontal scroll of
+  // the timeline pane. Null until the pane has mounted and reported
+  // its scroll position — until then the layout falls back to the
+  // full range so nothing disappears on the initial render.
+  const [visibleWindow, setVisibleWindow] = useState<[number, number] | null>(null);
+
+  const visibleData = useMemo(() => {
     if (!data) return null;
-    return computeLayout(data, timelineSvgWidth, windowRange[0], windowRange[1], nowMs);
-  }, [data, timelineSvgWidth, windowRange, nowMs]);
+    if (!visibleWindow) return data;
+    const [vFrom, vTo] = visibleWindow;
+    // A Tab or Window is "visibly open" during [vFrom, vTo] if its
+    // lifetime intersects that interval. Rows for tabs whose entire
+    // lifetime is off-screen disappear so the row list only shows
+    // browsing that is actually visible.
+    const out: WindowTabVisitWindow[] = [];
+    for (const w of data) {
+      const wOpened = w.window.opened_at;
+      const wClosed = w.window.closed_at ?? Number.POSITIVE_INFINITY;
+      if (wOpened > vTo || wClosed < vFrom) continue;
+      const tabs = w.tabs.filter((t) => {
+        const opened = t.tab.opened_at;
+        const closed = t.tab.closed_at ?? Number.POSITIVE_INFINITY;
+        return opened <= vTo && closed >= vFrom;
+      });
+      if (tabs.length === 0) continue;
+      out.push({ ...w, tabs });
+    }
+    return out;
+  }, [data, visibleWindow]);
+
+  const layout = useMemo(() => {
+    if (!visibleData) return null;
+    return computeLayout(visibleData, timelineSvgWidth, windowRange[0], windowRange[1], nowMs);
+  }, [visibleData, timelineSvgWidth, windowRange, nowMs]);
 
   useEffect(() => {
     if (!layout) return;
@@ -486,6 +516,38 @@ export const GanttView: React.FC = () => {
     dragStateRef.current = null;
     setDragging(false);
   }, []);
+
+  // Track the scroll position of the timeline pane and convert it to a
+  // time-range [vFrom, vTo] over the full windowRange. Runs when data
+  // first becomes available (which is when the pane mounts) and when
+  // the pane's width or the picked range change. Scroll events are
+  // RAF-throttled to stay smooth under a fast drag.
+  useEffect(() => {
+    if (!data) return;
+    const pane = timelinePaneRef.current;
+    if (!pane) return;
+    let raf: number | null = null;
+    const compute = () => {
+      if (timelineSvgWidth <= 0) return;
+      const total = windowRange[1] - windowRange[0];
+      const from = windowRange[0] + (pane.scrollLeft / timelineSvgWidth) * total;
+      const to = windowRange[0] + ((pane.scrollLeft + pane.clientWidth) / timelineSvgWidth) * total;
+      setVisibleWindow([from, to]);
+    };
+    compute();
+    const onScroll = () => {
+      if (raf != null) return;
+      raf = requestAnimationFrame(() => {
+        compute();
+        raf = null;
+      });
+    };
+    pane.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      pane.removeEventListener('scroll', onScroll);
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, [data, timelineSvgWidth, windowRange]);
 
   const onRangeChange = useCallback(
     (event: React.ChangeEvent<HTMLSelectElement>) => {

@@ -232,6 +232,31 @@ describe('layoutTimeline', () => {
     expect(layout.bars[0]!.width).toBe(MIN_BAR_WIDTH);
   });
 
+  it('drops lanes for tabs whose visits are entirely outside the window', () => {
+    // tab1 has one visit inside [0,1000], tab2's visit is entirely
+    // before the window. tab2 should not get a lane; if it did, the
+    // row list would grow without bound as history accumulates and
+    // scrolling would leave dead rows for off-screen tabs.
+    const tabOffscreen: TabNode = {
+      ...tab1,
+      id: 'tab_offscreen',
+      browser_tab_id: 999,
+      opened_at: -1000,
+      closed_at: -500,
+    };
+    const rows: TimelineVisit[] = [
+      { visit: makeVisit('v_in', 200, 400), page: pHn, tab: tab1 },
+      { visit: makeVisit('v_out', -900, -600), page: pHn, tab: tabOffscreen },
+    ];
+    const layout = layoutTimeline({
+      rows, tFrom: 0, tTo: 1000, now: 2000,
+      viewportWidth: 1000, viewportHeight: 100, desiredTicks: 5,
+    });
+    const laneTabs = layout.lanes.map((l) => l.tab_id).sort();
+    expect(laneTabs).toEqual([tab1.id]);
+    expect(layout.bars.map((b) => b.visit_id)).toEqual(['v_in']);
+  });
+
   it('emits axis ticks over the window at the layout-selected step', () => {
     const layout = layoutTimeline({
       rows: [],

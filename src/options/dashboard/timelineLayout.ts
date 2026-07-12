@@ -164,7 +164,16 @@ export function layoutTimeline(input: LayoutInput): TimelineLayout {
   const timeToX = (t: number) => CANVAS_LEFT_PAD + ((t - tFrom) / range) * usableWidth;
   const xToTime = (x: number) => tFrom + ((x - CANVAS_LEFT_PAD) / usableWidth) * range;
 
-  const { laneByTabId, tabById } = computeLaneAssignment(rows);
+  // Only tabs with at least one visit whose lifetime intersects
+  // [tFrom, tTo] get a lane. Otherwise scrolling / zooming leaves
+  // dead lanes for tabs whose visits are entirely off-screen, and
+  // the row list grows without bound as history accumulates.
+  const visibleRows = rows.filter((row) => {
+    const start = row.visit.at_time;
+    const end = row.visit.ended_at ?? now;
+    return start <= tTo && end >= tFrom;
+  });
+  const { laneByTabId, tabById } = computeLaneAssignment(visibleRows);
   const laneCount = laneByTabId.size;
 
   const lanes: TimelineLane[] = [];
@@ -183,13 +192,15 @@ export function layoutTimeline(input: LayoutInput): TimelineLayout {
     });
 
   const bars: TimelineBar[] = [];
-  for (const row of rows) {
+  for (const row of visibleRows) {
     const tabId = row.tab?.id ?? '(no-tab)';
     const lane = laneByTabId.get(tabId);
     if (lane == null) continue;
 
     const start = row.visit.at_time;
     const end = row.visit.ended_at ?? now;
+    // visibleRows already dropped fully-off-window bars, but a
+    // defense-in-depth check keeps the bar geometry honest.
     if (end < tFrom || start > tTo) continue;
 
     const xStart = timeToX(Math.max(start, tFrom));

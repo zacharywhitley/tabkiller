@@ -807,14 +807,11 @@ export async function windowsWithVisitsBetween(
   const tabsByWindow = new Map<string, WindowTabVisitTab[]>();
   for (const tab of tabs) {
     const tabVisits = visitsByTab.get(tab.id) ?? [];
-    // Include a tab if it's currently open (so the count matches the
-    // Tabs view) OR if it's closed but has visits worth showing.
-    // Tabs open before the SW came online, extension pages, chrome://
-    // navigations, etc. produce no Visit nodes but still exist. The
-    // renderer collapses them to a header-only row so an "empty" open
-    // tab isn't visually noisy.
-    const isOpen = tab.closed_at == null;
-    if (!isOpen && tabVisits.length === 0) continue;
+    // Currently-open tabs only — matches the Tabs view exactly.
+    // Closed tabs (even with visits) are historical context that lives
+    // in the Sessions and Timeline views. Empty rows collapse to
+    // header-only height so they don't add visual noise.
+    if (tab.closed_at != null) continue;
     tabVisits.sort((a, b) => a.visit.at_time - b.visit.at_time);
     const winEdge = (await g.outInterval(tab.id, 'in_window'))[0];
     if (!winEdge) continue;

@@ -64,11 +64,17 @@ export class WebCryptoEncryptionService {
     const cleanup = new AutoCleanup();
 
     try {
-      // Convert string data to ArrayBuffer
-      const dataBuffer = typeof data === 'string' 
-        ? stringToArrayBuffer(data) 
+      // Convert string data to ArrayBuffer. Only register the buffer for
+      // cleanup when we allocated it ourselves — the caller still owns
+      // any ArrayBuffer they passed in, and zeroing it here would
+      // corrupt data they use after encrypt returns (e.g.
+      // SecureKeyStorage.storeKey then hashes keyData for integrity).
+      const dataBuffer = typeof data === 'string'
+        ? stringToArrayBuffer(data)
         : data;
-      cleanup.addBuffer(dataBuffer);
+      if (typeof data === 'string') {
+        cleanup.addBuffer(dataBuffer);
+      }
 
       // Generate cryptographically secure IV
       const iv = generateRandomBytes(this.config.ivLength);

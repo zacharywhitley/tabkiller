@@ -322,32 +322,44 @@ describe('NavigationHistoryTracker', () => {
     });
 
     it('should create and manage navigation chains', async () => {
-      const tabId = 1;
-      const sessionId = 'session_123';
+      // Chain grouping keys off the tab's sessionId, which the
+      // tracker derives from Date.now() at entry-creation time. Under
+      // real timers the three synchronous events race a ms tick and
+      // sometimes fall on different sessionIds → one chain per tick,
+      // which flakes the length assertion. Freeze the clock so all
+      // three entries land in the same session.
+      jest.useFakeTimers();
+      try {
+        jest.setSystemTime(new Date(2_000_000));
 
-      // Create multiple navigation entries
-      const urls = [
-        'https://start.com',
-        'https://middle.com',
-        'https://end.com'
-      ];
+        const tabId = 1;
 
-      for (let i = 0; i < urls.length; i++) {
-        await tracker.processTabEvent({
-          type: i === 0 ? 'created' : 'updated',
-          tabId,
-          windowId: 1,
-          timestamp: Date.now() + (i * 1000),
-          data: { url: urls[i], title: `Page ${i + 1}` }
-        });
+        // Create multiple navigation entries
+        const urls = [
+          'https://start.com',
+          'https://middle.com',
+          'https://end.com'
+        ];
+
+        for (let i = 0; i < urls.length; i++) {
+          await tracker.processTabEvent({
+            type: i === 0 ? 'created' : 'updated',
+            tabId,
+            windowId: 1,
+            timestamp: Date.now() + (i * 1000),
+            data: { url: urls[i], title: `Page ${i + 1}` }
+          });
+        }
+
+        const chains = tracker.getNavigationChains(tabId);
+        expect(chains).toHaveLength(1);
+        expect(chains[0].entries).toHaveLength(3);
+        // Chain events fire same-tick under frozen clock → 0 span.
+        expect(chains[0].startTime).toBeLessThanOrEqual(chains[0].endTime!);
+        expect(chains[0].totalTime).toBeGreaterThanOrEqual(0);
+      } finally {
+        jest.useRealTimers();
       }
-
-      const chains = tracker.getNavigationChains(tabId);
-      expect(chains).toHaveLength(1);
-      expect(chains[0].entries).toHaveLength(3);
-      // Chain events fire same-tick under synchronous drive → 0 span.
-      expect(chains[0].startTime).toBeLessThanOrEqual(chains[0].endTime!);
-      expect(chains[0].totalTime).toBeGreaterThanOrEqual(0);
     });
 
     it('should finalize navigation chains', async () => {

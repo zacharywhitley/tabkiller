@@ -334,25 +334,37 @@ export async function transformTabCreated(
   const nodes: AnyNode[] = [];
   const edges: AnyEdge[] = [];
 
-  const tabId = tabNodeId(event.id);
-  const tab: TabNode = {
-    id: tabId,
-    type: 'Tab',
-    recorded_at: now,
-    opened_at: event.timestamp,
-    closed_at: null,
-    browser_tab_id: event.tabId,
-  };
-  nodes.push(tab);
+  // Idempotency: bootstrap flows (initializeCurrentTabs on every SW start)
+  // fire tab_created for every live browser tab, so without this check the
+  // graph would gain a duplicate Tab node per browser tab on every SW
+  // restart. If an open Tab with this browser_tab_id already exists, keep
+  // it and skip the create (opener buffering below still runs).
+  const existingTab = await ctx.findTabByBrowserTabId(event.tabId);
+  const alreadyOpen = existingTab != null && existingTab.closed_at == null;
 
-  // Lazy Window creation. No dedicated window_created event yet — task #51
-  // does not emit one — so we upsert a Window node keyed by the browser
-  // window id the first time a tab_created references it.
+  const tabId = alreadyOpen ? existingTab!.id : tabNodeId(event.id);
+  if (!alreadyOpen) {
+    const tab: TabNode = {
+      id: tabId,
+      type: 'Tab',
+      recorded_at: now,
+      opened_at: event.timestamp,
+      closed_at: null,
+      browser_tab_id: event.tabId,
+    };
+    nodes.push(tab);
+  }
+
+  // Same idempotency for the lazy Window creation — a Window whose
+  // browser_window_id is already open should not be duplicated.
   const windowId = windowNodeId(event.windowId);
   const existingWindow = await ctx.findWindow(windowId);
-  if (!existingWindow) {
+  const existingLiveWindow =
+    existingWindow ??
+    (await ctx.findWindowByBrowserWindowId(event.windowId));
+  if (!existingLiveWindow || existingLiveWindow.closed_at != null) {
     const window: WindowNode = {
-      id: windowId,
+      id: existingLiveWindow?.id ?? windowId,
       type: 'Window',
       recorded_at: now,
       opened_at: event.timestamp,
@@ -361,23 +373,28 @@ export async function transformTabCreated(
     };
     nodes.push(window);
   }
+  const resolvedWindowId = existingLiveWindow?.id ?? windowId;
 
-  // in_window: Tab -> Window, valid for tab lifetime.
-  edges.push({
-    id: edgeId(event.id, 'in_window'),
-    kind: 'interval',
-    type: 'in_window',
-    from_id: tabId,
-    to_id: windowId,
-    recorded_at: now,
-    valid_from: event.timestamp,
-    valid_to: null,
-  });
+  // in_window: Tab -> Window, valid for tab lifetime. Skip if the
+  // relationship already exists (the Tab was already tracked).
+  if (!alreadyOpen) {
+    edges.push({
+      id: edgeId(event.id, 'in_window'),
+      kind: 'interval',
+      type: 'in_window',
+      from_id: tabId,
+      to_id: resolvedWindowId,
+      recorded_at: now,
+      valid_from: event.timestamp,
+      valid_to: null,
+    });
+  }
 
   // Opener buffering: the actual `opened_from` edge cannot be emitted here
   // because the child Visit does not exist yet. Stash the opener visit id
   // keyed by browser tab id; the next navigation_committed for this tab
-  // will consume it.
+  // will consume it. Still applies even for re-created tabs — a fresh
+  // navigation event will consume the buffer.
   const openerVisitId = event.metadata?.openerVisitId;
   if (typeof openerVisitId === 'string' && openerVisitId.length > 0) {
     ctx.putOpenerBuffer(event.tabId, openerVisitId);

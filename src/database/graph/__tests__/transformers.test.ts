@@ -133,11 +133,18 @@ function makeContext(store: StubStore, state: ContextState): IngestContext {
     findWindow: async (id) => store.windows.get(id),
     findSearchQuery: async (id) => store.searches.get(id),
     findTabByBrowserTabId: async (id) => store.tabs.get(id),
+    findWindowByBrowserWindowId: async (id) => {
+      for (const w of store.windows.values()) {
+        if (w.browser_window_id === id) return w;
+      }
+      return undefined;
+    },
 
     activeIntervalEdgesFromVisit: async (visitId) => store.intervalEdgesFromVisit.get(visitId) ?? [],
     activeInSessionEdgesForSession: async (sessionId) => store.inSessionEdgesForSession.get(sessionId) ?? [],
     activeInWindowEdgeForTab: async (tabId) => store.inWindowEdgeForTab.get(tabId),
     activeVisits: async () => store.activeVisitList,
+    tabsInWindow: async () => [],
 
     warn: (message, ctx) => { store.warnings.push({ message, ctx }); },
   };

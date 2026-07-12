@@ -749,44 +749,90 @@ class BackgroundService {
       const graph = new GraphStore(this.sessionStorageEngine.getDatabase());
       const now = Date.now();
       let ghostTabs = 0;
+      let dupTabs = 0;
       let ghostWindows = 0;
+      let dupWindows = 0;
 
-      const allTabs = await graph.nodesOfType<import('../database/graph/types').TabNode>('Tab');
-      for (const tab of allTabs) {
+      // Group open Tab nodes by browser_tab_id and by liveness. For each
+      // browser_tab_id we want at most one open Tab node in the graph;
+      // extras are duplicates from before the tab_created idempotency fix
+      // and should be closed. Tabs whose browser_tab_id isn't live at all
+      // are ghosts and get closed regardless.
+      const openTabsByBid = new Map<number, import('../database/graph/types').TabNode[]>();
+      const openGhostTabs: import('../database/graph/types').TabNode[] = [];
+      for (const tab of await graph.nodesOfType<import('../database/graph/types').TabNode>('Tab')) {
         if (tab.closed_at != null) continue;
-        if (liveTabIds.has(tab.browser_tab_id)) continue;
-        await this.outbox.storeEvent({
-          id: generateEventId('tabr-recon'),
-          timestamp: now,
-          type: 'tab_removed',
-          tabId: tab.browser_tab_id,
-          windowId: undefined,
-          sessionId: '',
-          metadata: { reconciled: true },
-        } as BrowsingEvent);
+        if (!liveTabIds.has(tab.browser_tab_id)) {
+          openGhostTabs.push(tab);
+          continue;
+        }
+        const bucket = openTabsByBid.get(tab.browser_tab_id);
+        if (bucket) bucket.push(tab);
+        else openTabsByBid.set(tab.browser_tab_id, [tab]);
+      }
+
+      const closeTabById = async (nodeId: string): Promise<void> => {
+        // Directly overwrite the Tab node's closed_at via a batch write —
+        // going through the outbox works too but requires the browser
+        // event shape, and here we already have the graph node in hand.
+        const store = new GraphStore(this.sessionStorageEngine.getDatabase());
+        const tab = await store.getNode<import('../database/graph/types').TabNode>(nodeId);
+        if (!tab || tab.closed_at != null) return;
+        await store.writeBatch({ nodes: [{ ...tab, recorded_at: now, closed_at: now }] });
+      };
+
+      for (const tab of openGhostTabs) {
+        await closeTabById(tab.id);
         ghostTabs++;
       }
-
-      const allWindows = await graph.nodesOfType<import('../database/graph/types').WindowNode>('Window');
-      for (const win of allWindows) {
-        if (win.closed_at != null) continue;
-        if (liveWindowIds.has(win.browser_window_id)) continue;
-        await this.outbox.storeEvent({
-          id: generateEventId('winr-recon'),
-          timestamp: now,
-          type: 'window_removed',
-          windowId: win.browser_window_id,
-          sessionId: '',
-          metadata: { reconciled: true },
-        } as BrowsingEvent);
-        ghostWindows++;
+      for (const [, dupBucket] of openTabsByBid) {
+        if (dupBucket.length <= 1) continue;
+        // Keep the most-recently-opened one; close the rest.
+        dupBucket.sort((a, b) => b.opened_at - a.opened_at);
+        for (let i = 1; i < dupBucket.length; i++) {
+          await closeTabById(dupBucket[i].id);
+          dupTabs++;
+        }
       }
 
-      if (ghostTabs > 0 || ghostWindows > 0) {
+      const openWindowsByBid = new Map<number, import('../database/graph/types').WindowNode[]>();
+      const openGhostWindows: import('../database/graph/types').WindowNode[] = [];
+      for (const win of await graph.nodesOfType<import('../database/graph/types').WindowNode>('Window')) {
+        if (win.closed_at != null) continue;
+        if (!liveWindowIds.has(win.browser_window_id)) {
+          openGhostWindows.push(win);
+          continue;
+        }
+        const bucket = openWindowsByBid.get(win.browser_window_id);
+        if (bucket) bucket.push(win);
+        else openWindowsByBid.set(win.browser_window_id, [win]);
+      }
+
+      const closeWindowById = async (nodeId: string): Promise<void> => {
+        const store = new GraphStore(this.sessionStorageEngine.getDatabase());
+        const win = await store.getNode<import('../database/graph/types').WindowNode>(nodeId);
+        if (!win || win.closed_at != null) return;
+        await store.writeBatch({ nodes: [{ ...win, recorded_at: now, closed_at: now }] });
+      };
+
+      for (const win of openGhostWindows) {
+        await closeWindowById(win.id);
+        ghostWindows++;
+      }
+      for (const [, dupBucket] of openWindowsByBid) {
+        if (dupBucket.length <= 1) continue;
+        dupBucket.sort((a, b) => b.opened_at - a.opened_at);
+        for (let i = 1; i < dupBucket.length; i++) {
+          await closeWindowById(dupBucket[i].id);
+          dupWindows++;
+        }
+      }
+
+      if (ghostTabs > 0 || dupTabs > 0 || ghostWindows > 0 || dupWindows > 0) {
         console.log(
-          `TabKiller reconcile: closed ${ghostTabs} ghost tab(s) and ${ghostWindows} ghost window(s)`,
+          `TabKiller reconcile: closed ${ghostTabs} ghost + ${dupTabs} duplicate tab(s), ` +
+            `${ghostWindows} ghost + ${dupWindows} duplicate window(s)`,
         );
-        this.graphIngest.drainSoon();
       }
     } catch (error) {
       console.warn('Ghost reconciliation failed:', error);

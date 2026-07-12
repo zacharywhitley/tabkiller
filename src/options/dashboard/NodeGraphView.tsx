@@ -20,7 +20,7 @@ import type {
 import type { PageNode, TabNode, VisitNode, WindowNode } from '../../database/graph/types';
 import { colorForDomain, hostnameOf } from './domainColor';
 
-const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_WINDOW_MS = 0; // 0 = auto-fit
 const CANVAS_PADDING = 40;
 const AXIS_HEIGHT = 24;
 const NODE_R = 5;
@@ -263,7 +263,9 @@ function computeLayout(
   return { nodes, edges, windows, width: timelineWidth, height, ticks };
 }
 
+// ms: 0 sentinel = auto-fit to earliest visit in the data.
 const RANGE_OPTIONS: ReadonlyArray<{ label: string; ms: number }> = [
+  { label: 'Auto-fit', ms: 0 },
   { label: 'Last 1h', ms: 60 * 60 * 1000 },
   { label: 'Last 6h', ms: 6 * 60 * 60 * 1000 },
   { label: 'Last 24h', ms: 24 * 60 * 60 * 1000 },
@@ -369,8 +371,33 @@ export const NodeGraphView: React.FC = () => {
       try {
         const g = await openGraphStoreForDebug();
         const t = Date.now();
-        const from = t - rangeMs;
-        const result = await windowsWithVisitsBetween(g, from, t);
+        // Auto-fit (rangeMs === 0): first ask over a wide window (30d),
+        // then shrink tFrom to the earliest visit at_time in the result so
+        // every dot lands on-screen. If nothing is in 30d, extend to the
+        // full graph.
+        const initialFrom = rangeMs === 0 ? t - 30 * 24 * 60 * 60 * 1000 : t - rangeMs;
+        let result = await windowsWithVisitsBetween(g, initialFrom, t);
+        let from = initialFrom;
+        if (rangeMs === 0) {
+          let earliest = Number.POSITIVE_INFINITY;
+          for (const w of result) {
+            for (const tab of w.tabs) {
+              for (const { visit } of tab.visits) {
+                if (visit.at_time < earliest) earliest = visit.at_time;
+              }
+            }
+          }
+          if (earliest === Number.POSITIVE_INFINITY) {
+            // Nothing in 30d — try the whole history.
+            from = 0;
+            result = await windowsWithVisitsBetween(g, from, t);
+          } else {
+            // Pad the earliest edge by 2% of the span so the leftmost dots
+            // aren't glued to the axis edge.
+            const span = Math.max(60_000, t - earliest);
+            from = earliest - span * 0.02;
+          }
+        }
         if (cancelled) return;
         setData(result);
         setWindowRange([from, t]);

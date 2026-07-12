@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { openGraphStoreForDebug } from '../debug/index';
-import { windowsWithVisitsBetween } from '../../database/graph/queries';
+import { openTabsGrouped, windowsWithVisitsBetween } from '../../database/graph/queries';
 import type {
   WindowTabVisitWindow,
 } from '../../database/graph/queries';
@@ -382,6 +382,7 @@ export const NodeGraphView: React.FC = () => {
   const [rangeMs, setRangeMs] = useState<number>(DEFAULT_WINDOW_MS);
   const [data, setData] = useState<WindowTabVisitWindow[] | null>(null);
   const [edges, setEdges] = useState<EdgeShape[]>([]);
+  const [openTabCount, setOpenTabCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(1000);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -427,6 +428,10 @@ export const NodeGraphView: React.FC = () => {
           }
         }
         if (cancelled) return;
+        const openNow = await openTabsGrouped(g);
+        if (cancelled) return;
+        const openTotal = openNow.reduce((n, w) => n + w.tabs.length, 0);
+        setOpenTabCount(openTotal);
         setData(result);
         setWindowRange([from, t]);
       } catch (e) {
@@ -579,7 +584,9 @@ export const NodeGraphView: React.FC = () => {
           ))}
         </select>
         <span style={{ fontSize: 12, opacity: 0.7 }}>
-          {data ? `${data.length} windows · ${totalTabs} tabs · ${totalVisits} visits · ${edges.length} edges` : ''}
+          {data
+            ? `${data.length} windows · ${totalTabs} of ${openTabCount} open tabs shown · ${totalVisits} visits · ${edges.length} edges`
+            : ''}
         </span>
       </div>
 

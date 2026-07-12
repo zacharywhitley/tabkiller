@@ -807,11 +807,12 @@ export async function windowsWithVisitsBetween(
   const tabsByWindow = new Map<string, WindowTabVisitTab[]>();
   for (const tab of tabs) {
     const tabVisits = visitsByTab.get(tab.id) ?? [];
-    // Currently-open tabs only — matches the Tabs view exactly.
-    // Closed tabs (even with visits) are historical context that lives
-    // in the Sessions and Timeline views. Empty rows collapse to
-    // header-only height so they don't add visual noise.
-    if (tab.closed_at != null) continue;
+    // Only include tabs that actually have captured browsing. Landed on
+    // this rule after iterating: empty tab rows visible in the label
+    // pane read as noise, and users need dot-content to make the row
+    // useful. The toolbar exposes the "N with browsing / M open" ratio
+    // so the count discrepancy vs. the Tabs view stays legible.
+    if (tabVisits.length === 0) continue;
     tabVisits.sort((a, b) => a.visit.at_time - b.visit.at_time);
     const winEdge = (await g.outInterval(tab.id, 'in_window'))[0];
     if (!winEdge) continue;

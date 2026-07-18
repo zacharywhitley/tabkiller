@@ -17,8 +17,9 @@ import { NodeGraphView } from './NodeGraphView';
 import { PageSearch } from './PageSearch';
 import { TabLoadView } from './TabLoadView';
 import { GanttView } from './GanttView';
+import { ForceGraphView } from './ForceGraphView';
 
-export type ViewName = 'sessions' | 'timeline' | 'graph' | 'gantt' | 'search' | 'tabs';
+export type ViewName = 'sessions' | 'timeline' | 'graph' | 'gantt' | 'network' | 'search' | 'tabs';
 
 export interface DashboardSelection {
   view: ViewName;
@@ -33,6 +34,7 @@ const VIEWS: ReadonlyArray<{ id: ViewName; label: string }> = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'graph', label: 'Graph' },
   { id: 'gantt', label: 'Gantt' },
+  { id: 'network', label: 'Network' },
   { id: 'tabs', label: 'Tabs' },
   { id: 'search', label: 'Search' },
 ];
@@ -145,6 +147,7 @@ export const DashboardShell: React.FC = () => {
           )}
           {selection.view === 'graph' && <NodeGraphView />}
           {selection.view === 'gantt' && <GanttView />}
+          {selection.view === 'network' && <ForceGraphView />}
           {selection.view === 'tabs' && <TabLoadView />}
           {selection.view === 'search' && (
             <PageSearch onOpenPageTimeline={gotoTimelineForPage} />

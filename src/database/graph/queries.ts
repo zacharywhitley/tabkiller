@@ -852,3 +852,108 @@ export async function windowsWithVisitsBetween(
   result.sort((a, b) => a.window.opened_at - b.window.opened_at);
   return result;
 }
+
+// ---- Page-to-page transition graph (time-agnostic) ----
+//
+// Aggregates every navigated_from and opened_from edge across the
+// captured Visit history and rolls them up to unique Pages, so downstream
+// callers can lay out browsing as a network graph without a time axis.
+//
+// A visit V has a parent visit P via navigated_from (same-tab) or
+// opened_from (cross-tab). Each such edge maps to a Page-level edge from
+// page(P) → page(V); we bucket by (parent_page, child_page, kind) and
+// sum weights. Self-edges (page navigates to itself, e.g. a reload
+// captured before the reload-drop filter) are omitted.
+
+export interface PageGraphNode {
+  page: PageNode;
+  visit_count: number;
+  domain: string;
+}
+
+export interface PageGraphEdge {
+  source: string;   // parent page id
+  target: string;   // child page id
+  kind: 'navigated_from' | 'opened_from';
+  weight: number;   // count of visits along this transition
+}
+
+export interface PageGraph {
+  nodes: PageGraphNode[];
+  edges: PageGraphEdge[];
+}
+
+export async function pageTransitionGraph(
+  g: GraphStore,
+  opts: { since?: number; until?: number } = {},
+): Promise<PageGraph> {
+  const since = opts.since ?? Number.NEGATIVE_INFINITY;
+  const until = opts.until ?? Number.POSITIVE_INFINITY;
+
+  const allVisits = await g.nodesOfType<VisitNode>('Visit');
+  const visits = allVisits.filter(
+    (v) => v.at_time >= since && v.at_time <= until && v.transition !== 'reload',
+  );
+
+  // Resolve each visit to its page id (via of_page).
+  const visitPage = new Map<string, string>();
+  for (const v of visits) {
+    const edges = await g.outInterval(v.id, 'of_page');
+    if (edges[0]) visitPage.set(v.id, edges[0].to_id);
+  }
+
+  // Build page-to-page edges by aggregating over transition edges.
+  const edgeAcc = new Map<string, PageGraphEdge>();
+  const pageIdsInUse = new Set<string>();
+  for (const v of visits) {
+    const childPage = visitPage.get(v.id);
+    if (!childPage) continue;
+    pageIdsInUse.add(childPage);
+    for (const kind of ['navigated_from', 'opened_from'] as const) {
+      const outs = await g.outPoint(v.id, kind);
+      for (const e of outs) {
+        const parentPage = visitPage.get(e.to_id);
+        if (!parentPage) continue;
+        if (parentPage === childPage) continue; // drop self-loops
+        pageIdsInUse.add(parentPage);
+        const key = `${parentPage}::${childPage}::${kind}`;
+        const existing = edgeAcc.get(key);
+        if (existing) {
+          existing.weight += 1;
+        } else {
+          edgeAcc.set(key, {
+            source: parentPage,
+            target: childPage,
+            kind,
+            weight: 1,
+          });
+        }
+      }
+    }
+  }
+
+  // Hydrate the Page nodes referenced by any edge or by any observed visit.
+  // Visit counts are counted per page from the visit set we scanned.
+  const perPageVisitCount = new Map<string, number>();
+  for (const [, pageId] of visitPage) {
+    perPageVisitCount.set(pageId, (perPageVisitCount.get(pageId) ?? 0) + 1);
+  }
+  const nodes: PageGraphNode[] = [];
+  for (const pageId of pageIdsInUse) {
+    const page = await g.getNode<PageNode>(pageId);
+    if (!page) continue;
+    let host = '';
+    try {
+      host = new URL(page.raw_url_first_seen ?? page.normalized_url).hostname;
+    } catch {
+      host = '';
+    }
+    nodes.push({
+      page,
+      visit_count: perPageVisitCount.get(pageId) ?? 0,
+      domain: host,
+    });
+  }
+
+  return { nodes, edges: Array.from(edgeAcc.values()) };
+}

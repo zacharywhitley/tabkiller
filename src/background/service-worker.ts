@@ -1034,15 +1034,25 @@ class BackgroundService {
    * Context menus setup
    */
   private setupContextMenus(): void {
-    this.browser.contextMenus?.create({
-      id: 'create-session',
-      title: 'Create TabKiller Session',
-      contexts: ['page']
-    });
+    if (!this.browser.contextMenus) return;
+    // MV3 service workers re-run setupContextMenus on every wake; the
+    // menu item persists across wakes, so a raw `create` throws
+    // "Cannot create item with duplicate id". removeAll() first so
+    // create is always a clean slate.
+    this.browser.contextMenus.removeAll()
+      .then(() => {
+        this.browser.contextMenus?.create({
+          id: 'create-session',
+          title: 'Create TabKiller Session',
+          contexts: ['page'],
+        });
+      })
+      .catch((err) => {
+        console.warn('setupContextMenus: failed to reset context menu', err);
+      });
 
-    this.browser.contextMenus?.onClicked.addListener((info, tab) => {
+    this.browser.contextMenus.onClicked.addListener((info, _tab) => {
       if (info.menuItemId === 'create-session') {
-        // Handle context menu click
         console.log('Create session from context menu');
       }
     });

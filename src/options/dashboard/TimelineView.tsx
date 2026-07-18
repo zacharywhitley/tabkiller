@@ -202,9 +202,16 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
     desiredTicks: Math.max(4, Math.floor(size.w / 100)),
   }), [rows, viewWindow, now, size]);
 
-  const onWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
+  // Wheel-zoom. React registers `onWheel` as a passive listener
+  // (React 17+), which turns preventDefault into a no-op and logs
+  // "Unable to preventDefault inside passive event listener". Attach
+  // a native non-passive wheel listener on the canvas wrap instead.
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const wheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {});
+  wheelHandlerRef.current = (event: WheelEvent) => {
+    if (!svgRef.current) return;
     event.preventDefault();
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = svgRef.current.getBoundingClientRect();
     const localX = event.clientX - rect.left;
     const anchor = layout.xToTime(localX);
     const factor = event.deltaY > 0 ? 1.2 : 1 / 1.2;
@@ -213,7 +220,14 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
     const newFrom = anchor - leftFraction * nextRange;
     const newTo = newFrom + nextRange;
     setViewWindow([newFrom, newTo]);
-  }, [layout, viewWindow]);
+  };
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const handler = (e: WheelEvent) => wheelHandlerRef.current(e);
+    svg.addEventListener('wheel', handler, { passive: false });
+    return () => svg.removeEventListener('wheel', handler);
+  }, [rows]);
 
   const onMouseDown = useCallback((event: React.MouseEvent<SVGSVGElement>) => {
     dragRef.current = { startX: event.clientX, startFrom: viewWindow[0], startTo: viewWindow[1] };
@@ -288,10 +302,10 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
           <div style={styles.empty}>No visits in this window.</div>
         ) : (
           <svg
+            ref={svgRef}
             style={styles.svg}
             width={size.w}
             height={layout.canvas.height}
-            onWheel={onWheel}
             onMouseDown={onMouseDown}
             onMouseMove={onMouseMove}
             onMouseUp={onMouseUp}

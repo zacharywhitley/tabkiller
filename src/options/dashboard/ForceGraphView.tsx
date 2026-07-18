@@ -1,17 +1,16 @@
 /**
- * Force-directed page graph.
+ * Radial page network.
  *
- * Time-agnostic view: nodes are unique Pages, edges are aggregated
- * page-to-page transitions (navigated_from = solid blue, opened_from
- * = solid amber). Clusters emerge naturally around related domains
- * (github.com pages pull toward each other because they link to each
- * other), which is the whole point of the view — see "topics" and
- * "hubs" you'd never spot on a time axis.
+ * Time-agnostic view: nodes are unique Pages, arranged around a
+ * single circle grouped into arcs by domain (github.com pages sit in
+ * the "github wedge," docs.google.com pages in the "docs wedge," and
+ * so on). Cross-domain edges cross the ring interior; intra-domain
+ * edges are short chords. Clusters are structural — no force sim
+ * needs to reveal them, they're laid out that way.
  *
- * The layout is a small Verlet-integrated force sim that runs in a
- * requestAnimationFrame loop. No external force-graph library —
- * ~50 lines of physics, easier to tune when we want to change the
- * feel (spring stiffness, cluster tightness, hub gravity, etc.).
+ * Deterministic layout — no simulation loop, positions are stable
+ * the moment the query returns. Named ForceGraphView still because
+ * the tab wiring depends on the module name, but the sim is gone.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,9 +18,6 @@ import { openGraphStoreForDebug } from '../debug/index';
 import { pageTransitionGraph } from '../../database/graph/queries';
 import type { PageGraph, PageGraphEdge, PageGraphNode } from '../../database/graph/queries';
 import { colorForDomain } from './domainColor';
-
-// ---- Range picker: same shape as the other timeline views so the UX
-// feels consistent. Time-agnostic layout, but time-scoped data.
 
 const RANGE_OPTIONS: ReadonlyArray<{ label: string; ms: number }> = [
   { label: 'Last 1h', ms: 60 * 60 * 1000 },
@@ -33,37 +29,52 @@ const RANGE_OPTIONS: ReadonlyArray<{ label: string; ms: number }> = [
 ];
 const DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
 
-// ---- Force sim tuning ----
-const SIM_ITERATIONS = 600;
-const REPULSE_K = 3800;      // Coulomb strength (per pair)
-const SPRING_K = 0.02;       // Hooke strength (per edge)
-const SPRING_REST = 90;      // desired edge length in px
-const CENTER_K = 0.008;      // pull toward center each step
-const DAMPING = 0.85;
-const MAX_SPEED = 25;
-
-// ---- Node/edge visual constants ----
+// Layout constants.
 const NODE_MIN_R = 4;
-const NODE_MAX_R = 22;
+const NODE_MAX_R = 20;
 const NODE_STROKE = 1.2;
-const EDGE_MIN_OPACITY = 0.18;
-const EDGE_MAX_OPACITY = 0.75;
+const EDGE_MIN_OPACITY = 0.14;
+const EDGE_MAX_OPACITY = 0.72;
+// Fraction of the circumference reserved for inter-domain gaps
+// (splits evenly across all domain boundaries).
+const DOMAIN_GAP_FRACTION = 0.12;
+// Ring radius as a fraction of min(width, height) / 2.
+const RING_RADIUS_FRACTION = 0.78;
+// Domain label sits this far outside the ring.
+const LABEL_RADIUS_OFFSET = 22;
 
-interface SimNode {
+interface PositionedNode {
   id: string;
   x: number;
   y: number;
-  vx: number;
-  vy: number;
   r: number;
   page: PageGraphNode;
+  domain: string;
+  angle: number;
 }
 
-interface SimEdge {
-  source: SimNode;
-  target: SimNode;
+interface PositionedEdge {
+  source: PositionedNode;
+  target: PositionedNode;
   weight: number;
   kind: PageGraphEdge['kind'];
+}
+
+interface DomainLabel {
+  domain: string;
+  x: number;
+  y: number;
+  textAnchor: 'start' | 'middle' | 'end';
+  count: number;
+  color: ReturnType<typeof colorForDomain>;
+}
+
+interface Layout {
+  nodes: PositionedNode[];
+  edges: PositionedEdge[];
+  labels: DomainLabel[];
+  center: { x: number; y: number };
+  radius: number;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -98,6 +109,8 @@ const darkOverrides = `
     .tk-fg__edge--nav { stroke: #7ea3d9 !important; }
     .tk-fg__edge--open { stroke: #e2a24d !important; }
     .tk-fg__node-stroke { stroke: rgba(255,255,255,0.35) !important; }
+    .tk-fg__ring { stroke: #3a3d42 !important; }
+    .tk-fg__domlabel { fill: #cdd0d5 !important; }
   }
 `;
 
@@ -107,90 +120,95 @@ function scaleRadius(count: number, maxCount: number): number {
   return NODE_MIN_R + t * (NODE_MAX_R - NODE_MIN_R);
 }
 
-function initSim(graph: PageGraph, width: number, height: number): {
-  nodes: SimNode[];
-  edges: SimEdge[];
-} {
-  const maxCount = graph.nodes.reduce((m, n) => Math.max(m, n.visit_count), 1);
+function computeLayout(graph: PageGraph, width: number, height: number): Layout {
   const cx = width / 2;
   const cy = height / 2;
-  const r = Math.max(80, Math.min(width, height) / 3);
-  // Init on a circle so the sim untangles predictably (random init
-  // tangles bad enough that a first-pass viewer sees a hairball).
-  const nodes: SimNode[] = graph.nodes.map((n, i) => {
-    const theta = (i / Math.max(1, graph.nodes.length)) * Math.PI * 2;
-    return {
-      id: n.page.id,
-      x: cx + Math.cos(theta) * r,
-      y: cy + Math.sin(theta) * r,
-      vx: 0,
-      vy: 0,
-      r: scaleRadius(n.visit_count, maxCount),
-      page: n,
-    };
+  const radius = Math.max(60, (Math.min(width, height) / 2) * RING_RADIUS_FRACTION);
+  const maxCount = graph.nodes.reduce((m, n) => Math.max(m, n.visit_count), 1);
+
+  // Group nodes by domain, sort by (biggest domain first, then by
+  // visit count within a domain so hubs cluster at the wedge center).
+  const byDomain = new Map<string, PageGraphNode[]>();
+  for (const n of graph.nodes) {
+    const key = n.domain || '(no domain)';
+    const bucket = byDomain.get(key);
+    if (bucket) bucket.push(n);
+    else byDomain.set(key, [n]);
+  }
+  const domainOrder = Array.from(byDomain.keys()).sort((a, b) => {
+    const la = byDomain.get(a)!.length;
+    const lb = byDomain.get(b)!.length;
+    if (la !== lb) return lb - la;
+    return a.localeCompare(b);
   });
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const edges: SimEdge[] = [];
+  for (const d of domainOrder) {
+    byDomain.get(d)!.sort((a, b) => b.visit_count - a.visit_count);
+  }
+
+  const total = graph.nodes.length;
+  const domainCount = domainOrder.length;
+  // Reserve a slice of the circumference for inter-domain gaps.
+  const gapAngle = domainCount > 1
+    ? (DOMAIN_GAP_FRACTION * Math.PI * 2) / domainCount
+    : 0;
+  const usableAngle = Math.PI * 2 - gapAngle * domainCount;
+  const anglePerNode = usableAngle / Math.max(1, total);
+
+  const positioned: PositionedNode[] = [];
+  const labels: DomainLabel[] = [];
+  // Start at -π/2 so the first wedge is at the top of the ring.
+  let angle = -Math.PI / 2;
+
+  for (const domain of domainOrder) {
+    const bucket = byDomain.get(domain)!;
+    const startAngle = angle;
+    for (const node of bucket) {
+      // Center the node in its angular slot.
+      const nodeAngle = angle + anglePerNode / 2;
+      positioned.push({
+        id: node.page.id,
+        x: cx + Math.cos(nodeAngle) * radius,
+        y: cy + Math.sin(nodeAngle) * radius,
+        r: scaleRadius(node.visit_count, maxCount),
+        page: node,
+        domain,
+        angle: nodeAngle,
+      });
+      angle += anglePerNode;
+    }
+    const endAngle = angle;
+    const midAngle = (startAngle + endAngle) / 2;
+    const labelRadius = radius + LABEL_RADIUS_OFFSET;
+    const lx = cx + Math.cos(midAngle) * labelRadius;
+    const ly = cy + Math.sin(midAngle) * labelRadius;
+    // Choose text-anchor so labels don't overflow the ring visually.
+    const cosMid = Math.cos(midAngle);
+    const textAnchor: DomainLabel['textAnchor'] =
+      cosMid > 0.3 ? 'start' : cosMid < -0.3 ? 'end' : 'middle';
+    labels.push({
+      domain,
+      x: lx,
+      y: ly,
+      textAnchor,
+      count: bucket.length,
+      color: colorForDomain(domain),
+    });
+    angle += gapAngle;
+  }
+
+  const byId = new Map(positioned.map((n) => [n.id, n]));
+  const edges: PositionedEdge[] = [];
   for (const e of graph.edges) {
     const s = byId.get(e.source);
     const t = byId.get(e.target);
     if (!s || !t) continue;
     edges.push({ source: s, target: t, weight: e.weight, kind: e.kind });
   }
-  return { nodes, edges };
+
+  return { nodes: positioned, edges, labels, center: { x: cx, y: cy }, radius };
 }
 
-function stepSim(nodes: SimNode[], edges: SimEdge[], cx: number, cy: number): void {
-  // Repulsion — O(n^2). Fine for a few hundred nodes; if we outgrow
-  // this a quadtree implementation would be the next step.
-  for (let i = 0; i < nodes.length; i++) {
-    const a = nodes[i]!;
-    for (let j = i + 1; j < nodes.length; j++) {
-      const b = nodes[j]!;
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      const dist2 = dx * dx + dy * dy || 0.01;
-      const force = REPULSE_K / dist2;
-      const dist = Math.sqrt(dist2);
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      a.vx += fx;
-      a.vy += fy;
-      b.vx -= fx;
-      b.vy -= fy;
-    }
-  }
-  // Attraction along edges (Hooke's law).
-  for (const e of edges) {
-    const dx = e.target.x - e.source.x;
-    const dy = e.target.y - e.source.y;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-    const strength = SPRING_K * Math.log(1 + e.weight);
-    const displacement = dist - SPRING_REST;
-    const fx = (dx / dist) * displacement * strength;
-    const fy = (dy / dist) * displacement * strength;
-    e.source.vx += fx;
-    e.source.vy += fy;
-    e.target.vx -= fx;
-    e.target.vy -= fy;
-  }
-  // Center gravity + integrate + clamp + damp.
-  for (const n of nodes) {
-    n.vx += (cx - n.x) * CENTER_K;
-    n.vy += (cy - n.y) * CENTER_K;
-    const speed = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
-    if (speed > MAX_SPEED) {
-      n.vx = (n.vx / speed) * MAX_SPEED;
-      n.vy = (n.vy / speed) * MAX_SPEED;
-    }
-    n.x += n.vx;
-    n.y += n.vy;
-    n.vx *= DAMPING;
-    n.vy *= DAMPING;
-  }
-}
-
-interface Hover { node: SimNode; x: number; y: number }
+interface Hover { node: PositionedNode; x: number; y: number }
 
 export const ForceGraphView: React.FC = () => {
   const [rangeMs, setRangeMs] = useState<number>(DEFAULT_RANGE_MS);
@@ -198,14 +216,10 @@ export const ForceGraphView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 1000, h: 600 });
   const [hover, setHover] = useState<Hover | null>(null);
-  const [_tick, setTick] = useState(0);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const simRef = useRef<{ nodes: SimNode[]; edges: SimEdge[] } | null>(null);
-  const framesLeftRef = useRef<number>(0);
-  const rafRef = useRef<number | null>(null);
 
-  // Pan / zoom state.
+  // Pan / zoom.
   const [viewport, setViewport] = useState<{ x: number; y: number; k: number }>(
     { x: 0, y: 0, k: 1 },
   );
@@ -243,39 +257,15 @@ export const ForceGraphView: React.FC = () => {
     return () => { cancelled = true; };
   }, [rangeMs]);
 
-  // Init sim whenever graph or canvas size changes.
-  useEffect(() => {
-    if (!graph) {
-      simRef.current = null;
-      return;
-    }
-    simRef.current = initSim(graph, size.w, size.h);
-    framesLeftRef.current = SIM_ITERATIONS;
-    setViewport({ x: 0, y: 0, k: 1 });
-    // Kick the RAF loop.
-    if (rafRef.current == null) {
-      const tick = () => {
-        if (!simRef.current || framesLeftRef.current <= 0) {
-          rafRef.current = null;
-          return;
-        }
-        // Two physics steps per frame keeps convergence brisk without
-        // stealing the whole animation budget.
-        stepSim(simRef.current.nodes, simRef.current.edges, size.w / 2, size.h / 2);
-        stepSim(simRef.current.nodes, simRef.current.edges, size.w / 2, size.h / 2);
-        framesLeftRef.current -= 2;
-        setTick((t) => t + 1);
-        rafRef.current = requestAnimationFrame(tick);
-      };
-      rafRef.current = requestAnimationFrame(tick);
-    }
-    return () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
+  const layout = useMemo(() => {
+    if (!graph) return null;
+    return computeLayout(graph, size.w, size.h);
   }, [graph, size.w, size.h]);
+
+  // Reset viewport when the layout regenerates (new range, new size).
+  useEffect(() => {
+    setViewport({ x: 0, y: 0, k: 1 });
+  }, [rangeMs, size.w, size.h]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     dragRef.current = { startX: e.clientX, startY: e.clientY, startVx: viewport.x, startVy: viewport.y };
@@ -293,8 +283,6 @@ export const ForceGraphView: React.FC = () => {
     (e.target as Element).releasePointerCapture?.(e.pointerId);
   }, []);
 
-  // Wheel-zoom. Attach non-passive so we can preventDefault (same
-  // dance as TimelineView).
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -305,7 +293,6 @@ export const ForceGraphView: React.FC = () => {
       const cy = e.clientY - rect.top;
       setViewport((v) => {
         const nextK = Math.max(0.2, Math.min(4, v.k * (e.deltaY > 0 ? 1 / 1.15 : 1.15)));
-        // Zoom about the pointer position.
         const ratio = nextK / v.k;
         return { k: nextK, x: cx - ratio * (cx - v.x), y: cy - ratio * (cy - v.y) };
       });
@@ -314,14 +301,14 @@ export const ForceGraphView: React.FC = () => {
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
-  const onNodeEnter = useCallback((n: SimNode) => (event: React.MouseEvent) => {
+  const onNodeEnter = useCallback((n: PositionedNode) => (event: React.MouseEvent) => {
     setHover({ node: n, x: event.clientX, y: event.clientY });
   }, []);
   const onNodeMove = useCallback((event: React.MouseEvent) => {
     setHover((prev) => (prev ? { ...prev, x: event.clientX, y: event.clientY } : prev));
   }, []);
   const onNodeLeave = useCallback(() => setHover(null), []);
-  const onNodeClick = useCallback((n: SimNode) => () => {
+  const onNodeClick = useCallback((n: PositionedNode) => () => {
     const url = n.page.page.raw_url_first_seen || n.page.page.normalized_url;
     if (url) globalThis.open(url, '_blank', 'noopener');
   }, []);
@@ -331,12 +318,13 @@ export const ForceGraphView: React.FC = () => {
   }, []);
 
   const maxWeight = useMemo(() => {
-    if (!simRef.current) return 1;
-    return simRef.current.edges.reduce((m, e) => Math.max(m, e.weight), 1);
-  }, [simRef.current, _tick]);
+    if (!layout) return 1;
+    return layout.edges.reduce((m, e) => Math.max(m, e.weight), 1);
+  }, [layout]);
 
   const nodeCount = graph?.nodes.length ?? 0;
   const edgeCount = graph?.edges.length ?? 0;
+  const domainCount = layout?.labels.length ?? 0;
 
   return (
     <div style={styles.root}>
@@ -350,7 +338,7 @@ export const ForceGraphView: React.FC = () => {
           ))}
         </select>
         <span style={{ fontSize: 12, opacity: 0.7 }}>
-          {graph ? `${nodeCount} pages · ${edgeCount} transitions` : ''}
+          {graph ? `${nodeCount} pages · ${domainCount} domains · ${edgeCount} transitions` : ''}
         </span>
         <span style={{ fontSize: 12, opacity: 0.5, marginLeft: 'auto' }}>drag = pan · wheel = zoom · click a node = open</span>
       </div>
@@ -368,12 +356,26 @@ export const ForceGraphView: React.FC = () => {
         {graph && graph.nodes.length === 0 && (
           <div style={styles.empty}>No captured pages in this range yet.</div>
         )}
-        {simRef.current && (
+        {layout && (
           <svg width={size.w} height={size.h} style={styles.svg}>
             <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
-              {simRef.current.edges.map((e, i) => {
+              {/* Faint guide ring so the layout structure reads even
+                  when the graph has few edges. */}
+              <circle
+                className="tk-fg__ring"
+                cx={layout.center.x}
+                cy={layout.center.y}
+                r={layout.radius}
+                fill="none"
+                stroke="#e0e2e6"
+                strokeWidth={1}
+                strokeDasharray="2 4"
+              />
+              {/* Edges under nodes so labels sit on top. */}
+              {layout.edges.map((e, i) => {
                 const w = e.weight;
-                const opacity = EDGE_MIN_OPACITY + (EDGE_MAX_OPACITY - EDGE_MIN_OPACITY) * (Math.log(1 + w) / Math.log(1 + maxWeight));
+                const opacity = EDGE_MIN_OPACITY + (EDGE_MAX_OPACITY - EDGE_MIN_OPACITY) *
+                  (Math.log(1 + w) / Math.log(1 + maxWeight));
                 return (
                   <line
                     key={`e${i}`}
@@ -388,8 +390,8 @@ export const ForceGraphView: React.FC = () => {
                   />
                 );
               })}
-              {simRef.current.nodes.map((n) => {
-                const color = colorForDomain(n.page.domain);
+              {layout.nodes.map((n) => {
+                const color = colorForDomain(n.domain);
                 return (
                   <circle
                     key={n.id}
@@ -408,6 +410,22 @@ export const ForceGraphView: React.FC = () => {
                   />
                 );
               })}
+              {layout.labels.map((l) => (
+                <text
+                  key={l.domain}
+                  className="tk-fg__domlabel"
+                  x={l.x}
+                  y={l.y}
+                  fontSize={11}
+                  fontFamily="ui-monospace, Menlo, monospace"
+                  fill="#4a4d52"
+                  textAnchor={l.textAnchor}
+                  dominantBaseline="middle"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {l.domain} · {l.count}
+                </text>
+              ))}
             </g>
           </svg>
         )}
@@ -419,7 +437,7 @@ export const ForceGraphView: React.FC = () => {
           </div>
           <div style={{ opacity: 0.85 }}>{hover.node.page.page.raw_url_first_seen}</div>
           <div style={{ marginTop: 4, opacity: 0.7 }}>
-            {hover.node.page.domain || '(no domain)'} · {hover.node.page.visit_count} visit{hover.node.page.visit_count === 1 ? '' : 's'}
+            {hover.node.domain || '(no domain)'} · {hover.node.page.visit_count} visit{hover.node.page.visit_count === 1 ? '' : 's'}
           </div>
         </div>
       )}

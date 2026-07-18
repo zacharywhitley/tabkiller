@@ -31,16 +31,21 @@ const DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
 
 // Layout constants.
 const NODE_MIN_R = 4;
-const NODE_MAX_R = 20;
+const NODE_MAX_R = 18;
+const DOMAIN_MIN_R = 10;
+const DOMAIN_MAX_R = 30;
 const NODE_STROKE = 1.2;
+const DOMAIN_STROKE = 2;
 const EDGE_MIN_OPACITY = 0.14;
 const EDGE_MAX_OPACITY = 0.72;
 // Fraction of the circumference reserved for inter-domain gaps
 // (splits evenly across all domain boundaries).
 const DOMAIN_GAP_FRACTION = 0.12;
-// Ring radius as a fraction of min(width, height) / 2.
-const RING_RADIUS_FRACTION = 0.78;
-// Domain label sits this far outside the ring.
+// Two concentric rings — inner for the per-domain aggregate node,
+// outer for the individual pages inside each domain's wedge.
+const OUTER_RING_FRACTION = 0.78;
+const INNER_RING_FRACTION = 0.34;
+// Domain label sits this far outside the outer ring.
 const LABEL_RADIUS_OFFSET = 22;
 
 interface PositionedNode {
@@ -51,6 +56,17 @@ interface PositionedNode {
   page: PageGraphNode;
   domain: string;
   angle: number;
+}
+
+interface DomainNode {
+  domain: string;
+  x: number;
+  y: number;
+  r: number;
+  midAngle: number;
+  pageCount: number;
+  totalVisits: number;
+  color: ReturnType<typeof colorForDomain>;
 }
 
 interface PositionedEdge {
@@ -71,10 +87,12 @@ interface DomainLabel {
 
 interface Layout {
   nodes: PositionedNode[];
+  domainNodes: DomainNode[];
   edges: PositionedEdge[];
   labels: DomainLabel[];
   center: { x: number; y: number };
-  radius: number;
+  outerRadius: number;
+  innerRadius: number;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -114,20 +132,19 @@ const darkOverrides = `
   }
 `;
 
-function scaleRadius(count: number, maxCount: number): number {
-  if (maxCount <= 1) return NODE_MIN_R + 3;
+function scaleRadius(count: number, maxCount: number, minR: number, maxR: number): number {
+  if (maxCount <= 1) return minR + (maxR - minR) * 0.2;
   const t = Math.min(1, Math.log(1 + count) / Math.log(1 + maxCount));
-  return NODE_MIN_R + t * (NODE_MAX_R - NODE_MIN_R);
+  return minR + t * (maxR - minR);
 }
 
 function computeLayout(graph: PageGraph, width: number, height: number): Layout {
   const cx = width / 2;
   const cy = height / 2;
-  const radius = Math.max(60, (Math.min(width, height) / 2) * RING_RADIUS_FRACTION);
-  const maxCount = graph.nodes.reduce((m, n) => Math.max(m, n.visit_count), 1);
+  const outerRadius = Math.max(60, (Math.min(width, height) / 2) * OUTER_RING_FRACTION);
+  const innerRadius = Math.max(30, (Math.min(width, height) / 2) * INNER_RING_FRACTION);
+  const maxPageCount = graph.nodes.reduce((m, n) => Math.max(m, n.visit_count), 1);
 
-  // Group nodes by domain, sort by (biggest domain first, then by
-  // visit count within a domain so hubs cluster at the wedge center).
   const byDomain = new Map<string, PageGraphNode[]>();
   for (const n of graph.nodes) {
     const key = n.domain || '(no domain)';
@@ -147,29 +164,34 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
 
   const total = graph.nodes.length;
   const domainCount = domainOrder.length;
-  // Reserve a slice of the circumference for inter-domain gaps.
   const gapAngle = domainCount > 1
     ? (DOMAIN_GAP_FRACTION * Math.PI * 2) / domainCount
     : 0;
   const usableAngle = Math.PI * 2 - gapAngle * domainCount;
   const anglePerNode = usableAngle / Math.max(1, total);
 
+  // Domain totals for the inner-ring node sizing.
+  const domainTotals = domainOrder.map((d) =>
+    byDomain.get(d)!.reduce((acc, n) => acc + n.visit_count, 0),
+  );
+  const maxDomainTotal = domainTotals.reduce((m, v) => Math.max(m, v), 1);
+
   const positioned: PositionedNode[] = [];
+  const domainNodes: DomainNode[] = [];
   const labels: DomainLabel[] = [];
   // Start at -π/2 so the first wedge is at the top of the ring.
   let angle = -Math.PI / 2;
 
-  for (const domain of domainOrder) {
+  domainOrder.forEach((domain, idx) => {
     const bucket = byDomain.get(domain)!;
     const startAngle = angle;
     for (const node of bucket) {
-      // Center the node in its angular slot.
       const nodeAngle = angle + anglePerNode / 2;
       positioned.push({
         id: node.page.id,
-        x: cx + Math.cos(nodeAngle) * radius,
-        y: cy + Math.sin(nodeAngle) * radius,
-        r: scaleRadius(node.visit_count, maxCount),
+        x: cx + Math.cos(nodeAngle) * outerRadius,
+        y: cy + Math.sin(nodeAngle) * outerRadius,
+        r: scaleRadius(node.visit_count, maxPageCount, NODE_MIN_R, NODE_MAX_R),
         page: node,
         domain,
         angle: nodeAngle,
@@ -178,10 +200,23 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
     }
     const endAngle = angle;
     const midAngle = (startAngle + endAngle) / 2;
-    const labelRadius = radius + LABEL_RADIUS_OFFSET;
+    const totalVisits = domainTotals[idx]!;
+    const color = colorForDomain(domain);
+
+    domainNodes.push({
+      domain,
+      x: cx + Math.cos(midAngle) * innerRadius,
+      y: cy + Math.sin(midAngle) * innerRadius,
+      r: scaleRadius(totalVisits, maxDomainTotal, DOMAIN_MIN_R, DOMAIN_MAX_R),
+      midAngle,
+      pageCount: bucket.length,
+      totalVisits,
+      color,
+    });
+
+    const labelRadius = outerRadius + LABEL_RADIUS_OFFSET;
     const lx = cx + Math.cos(midAngle) * labelRadius;
     const ly = cy + Math.sin(midAngle) * labelRadius;
-    // Choose text-anchor so labels don't overflow the ring visually.
     const cosMid = Math.cos(midAngle);
     const textAnchor: DomainLabel['textAnchor'] =
       cosMid > 0.3 ? 'start' : cosMid < -0.3 ? 'end' : 'middle';
@@ -191,10 +226,10 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
       y: ly,
       textAnchor,
       count: bucket.length,
-      color: colorForDomain(domain),
+      color,
     });
     angle += gapAngle;
-  }
+  });
 
   const byId = new Map(positioned.map((n) => [n.id, n]));
   const edges: PositionedEdge[] = [];
@@ -205,7 +240,15 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
     edges.push({ source: s, target: t, weight: e.weight, kind: e.kind });
   }
 
-  return { nodes: positioned, edges, labels, center: { x: cx, y: cy }, radius };
+  return {
+    nodes: positioned,
+    domainNodes,
+    edges,
+    labels,
+    center: { x: cx, y: cy },
+    outerRadius,
+    innerRadius,
+  };
 }
 
 interface Hover { node: PositionedNode; x: number; y: number }
@@ -359,18 +402,43 @@ export const ForceGraphView: React.FC = () => {
         {layout && (
           <svg width={size.w} height={size.h} style={styles.svg}>
             <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
-              {/* Faint guide ring so the layout structure reads even
-                  when the graph has few edges. */}
+              {/* Faint guide rings so the two-tier structure reads
+                  even when the graph has few edges. */}
               <circle
                 className="tk-fg__ring"
                 cx={layout.center.x}
                 cy={layout.center.y}
-                r={layout.radius}
+                r={layout.innerRadius}
                 fill="none"
                 stroke="#e0e2e6"
                 strokeWidth={1}
                 strokeDasharray="2 4"
               />
+              <circle
+                className="tk-fg__ring"
+                cx={layout.center.x}
+                cy={layout.center.y}
+                r={layout.outerRadius}
+                fill="none"
+                stroke="#e0e2e6"
+                strokeWidth={1}
+                strokeDasharray="2 4"
+              />
+              {/* Thin spoke from each domain node outward to its wedge
+                  so the two rings read as one grouped structure. */}
+              {layout.domainNodes.map((d) => (
+                <line
+                  key={`${d.domain}-spoke`}
+                  className="tk-fg__ring"
+                  x1={layout.center.x + Math.cos(d.midAngle) * (layout.innerRadius + d.r)}
+                  y1={layout.center.y + Math.sin(d.midAngle) * (layout.innerRadius + d.r)}
+                  x2={layout.center.x + Math.cos(d.midAngle) * (layout.outerRadius - NODE_MAX_R - 2)}
+                  y2={layout.center.y + Math.sin(d.midAngle) * (layout.outerRadius - NODE_MAX_R - 2)}
+                  stroke="#e0e2e6"
+                  strokeWidth={1}
+                  opacity={0.55}
+                />
+              ))}
               {/* Edges under nodes so labels sit on top. */}
               {layout.edges.map((e, i) => {
                 const w = e.weight;
@@ -410,6 +478,22 @@ export const ForceGraphView: React.FC = () => {
                   />
                 );
               })}
+              {/* Domain aggregate nodes on the inner ring — heavier
+                  stroke so they read as a different tier than the
+                  pages on the outer ring. */}
+              {layout.domainNodes.map((d) => (
+                <circle
+                  key={`d:${d.domain}`}
+                  cx={d.x}
+                  cy={d.y}
+                  r={d.r}
+                  fill={d.color.fill}
+                  stroke={d.color.border}
+                  strokeWidth={DOMAIN_STROKE}
+                  className="tk-fg__node-stroke"
+                  style={{ pointerEvents: 'none' }}
+                />
+              ))}
               {layout.labels.map((l) => (
                 <text
                   key={l.domain}

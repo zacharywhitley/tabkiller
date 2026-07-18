@@ -38,9 +38,15 @@ const NODE_STROKE = 1.2;
 const DOMAIN_STROKE = 2;
 const EDGE_MIN_OPACITY = 0.14;
 const EDGE_MAX_OPACITY = 0.72;
-// Fraction of the circumference reserved for inter-domain gaps
-// (splits evenly across all domain boundaries).
-const DOMAIN_GAP_FRACTION = 0.12;
+// No angular gap between wedges — the thick separator lines and the
+// colored fills carry the boundary now.
+const DOMAIN_GAP_FRACTION = 0;
+// Pie-slice fill opacity — subtle enough that transition edges and
+// nodes stay foreground; strong enough that wedges read.
+const WEDGE_FILL_OPACITY = 0.14;
+const WEDGE_SEPARATOR_WIDTH = 2;
+const WEDGE_SEPARATOR_COLOR = '#c8ccd1';
+const WEDGE_SEPARATOR_COLOR_DARK = '#4a4d52';
 // Two concentric rings — inner for the per-domain aggregate node,
 // outer for the individual pages inside each domain's wedge.
 const OUTER_RING_FRACTION = 0.78;
@@ -64,6 +70,8 @@ interface DomainNode {
   y: number;
   r: number;
   midAngle: number;
+  startAngle: number;
+  endAngle: number;
   pageCount: number;
   totalVisits: number;
   color: ReturnType<typeof colorForDomain>;
@@ -90,13 +98,12 @@ interface Layout {
   domainNodes: DomainNode[];
   edges: PositionedEdge[];
   labels: DomainLabel[];
-  // Domain → list of its pages in outer-ring order, so the render
-  // pass can draw a membership line from each domain node to each
-  // of its pages without doing another O(n) group by.
-  membership: Map<string, PositionedNode[]>;
   center: { x: number; y: number };
   outerRadius: number;
   innerRadius: number;
+  // Wedge fill radius — a hair past the page ring so page nodes
+  // sit on the boundary rather than outside it.
+  wedgeRadius: number;
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -132,6 +139,7 @@ const darkOverrides = `
     .tk-fg__edge--open { stroke: #e2a24d !important; }
     .tk-fg__node-stroke { stroke: rgba(255,255,255,0.35) !important; }
     .tk-fg__ring { stroke: #3a3d42 !important; }
+    .tk-fg__wedge-sep { stroke: ${WEDGE_SEPARATOR_COLOR_DARK} !important; }
     .tk-fg__domlabel { fill: #cdd0d5 !important; }
   }
 `;
@@ -183,17 +191,22 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
   const positioned: PositionedNode[] = [];
   const domainNodes: DomainNode[] = [];
   const labels: DomainLabel[] = [];
-  const membership = new Map<string, PositionedNode[]>();
   // Start at -π/2 so the first wedge is at the top of the ring.
   let angle = -Math.PI / 2;
 
+  // Distribute the full circle to domains proportionally to page
+  // count. Each domain's angular slot is ((pages_in_domain / total)
+  // * 2π); pages inside sit at slot midpoints.
   domainOrder.forEach((domain, idx) => {
     const bucket = byDomain.get(domain)!;
+    const domainAngle = (bucket.length / Math.max(1, total)) * usableAngle;
     const startAngle = angle;
-    const domainMembers: PositionedNode[] = [];
-    for (const node of bucket) {
-      const nodeAngle = angle + anglePerNode / 2;
-      const p: PositionedNode = {
+    for (let i = 0; i < bucket.length; i++) {
+      const node = bucket[i]!;
+      // Center each page in its slot within the domain's arc.
+      const perNode = domainAngle / bucket.length;
+      const nodeAngle = startAngle + perNode * (i + 0.5);
+      positioned.push({
         id: node.page.id,
         x: cx + Math.cos(nodeAngle) * outerRadius,
         y: cy + Math.sin(nodeAngle) * outerRadius,
@@ -201,13 +214,10 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
         page: node,
         domain,
         angle: nodeAngle,
-      };
-      positioned.push(p);
-      domainMembers.push(p);
-      angle += anglePerNode;
+      });
     }
-    membership.set(domain, domainMembers);
-    const endAngle = angle;
+    const endAngle = startAngle + domainAngle;
+    angle = endAngle;
     const midAngle = (startAngle + endAngle) / 2;
     const totalVisits = domainTotals[idx]!;
     const color = colorForDomain(domain);
@@ -218,6 +228,8 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
       y: cy + Math.sin(midAngle) * innerRadius,
       r: scaleRadius(totalVisits, maxDomainTotal, DOMAIN_MIN_R, DOMAIN_MAX_R),
       midAngle,
+      startAngle,
+      endAngle,
       pageCount: bucket.length,
       totalVisits,
       color,
@@ -254,11 +266,24 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
     domainNodes,
     edges,
     labels,
-    membership,
     center: { x: cx, y: cy },
     outerRadius,
     innerRadius,
+    wedgeRadius: outerRadius + NODE_MAX_R + 4,
   };
+}
+
+// SVG pie-slice path from (cx, cy) center out to radius r, sweeping
+// [startAngle, endAngle] in radians. Handles the >180° arc-flag case.
+function pieSlicePath(
+  cx: number, cy: number, r: number, startAngle: number, endAngle: number,
+): string {
+  const x1 = cx + Math.cos(startAngle) * r;
+  const y1 = cy + Math.sin(startAngle) * r;
+  const x2 = cx + Math.cos(endAngle) * r;
+  const y2 = cy + Math.sin(endAngle) * r;
+  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 }
 
 interface Hover { node: PositionedNode; x: number; y: number }
@@ -412,48 +437,38 @@ export const ForceGraphView: React.FC = () => {
         {layout && (
           <svg width={size.w} height={size.h} style={styles.svg}>
             <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
-              {/* Faint guide rings so the two-tier structure reads
-                  even when the graph has few edges. */}
-              <circle
-                className="tk-fg__ring"
-                cx={layout.center.x}
-                cy={layout.center.y}
-                r={layout.innerRadius}
-                fill="none"
-                stroke="#e0e2e6"
-                strokeWidth={1}
-                strokeDasharray="2 4"
-              />
-              <circle
-                className="tk-fg__ring"
-                cx={layout.center.x}
-                cy={layout.center.y}
-                r={layout.outerRadius}
-                fill="none"
-                stroke="#e0e2e6"
-                strokeWidth={1}
-                strokeDasharray="2 4"
-              />
-              {/* One membership line from each domain node to each of
-                  its pages — makes the domain-to-pages grouping read
-                  as a sunburst per wedge. Deliberately faint so the
-                  navigated_from / opened_from transition edges stay
-                  the visual foreground; membership is context. */}
-              {layout.domainNodes.map((d) =>
-                (layout.membership.get(d.domain) ?? []).map((page) => (
+              {/* Pie-slice fills — one per domain wedge, tinted with
+                  the domain's color at low opacity so the transition
+                  edges + nodes still dominate visually but the
+                  grouping is obvious at a glance. */}
+              {layout.domainNodes.map((d) => (
+                <path
+                  key={`w:${d.domain}`}
+                  d={pieSlicePath(layout.center.x, layout.center.y, layout.wedgeRadius, d.startAngle, d.endAngle)}
+                  fill={d.color.fill}
+                  fillOpacity={WEDGE_FILL_OPACITY}
+                  stroke="none"
+                />
+              ))}
+              {/* Thick separator lines at each wedge boundary — the
+                  same boundaries the pie fills carry, but crisp. */}
+              {layout.domainNodes.map((d) => {
+                const x = layout.center.x + Math.cos(d.startAngle) * layout.wedgeRadius;
+                const y = layout.center.y + Math.sin(d.startAngle) * layout.wedgeRadius;
+                return (
                   <line
-                    key={`m:${d.domain}:${page.id}`}
-                    className="tk-fg__ring"
-                    x1={d.x}
-                    y1={d.y}
-                    x2={page.x}
-                    y2={page.y}
-                    stroke="#d5d8dd"
-                    strokeWidth={1}
-                    opacity={0.5}
+                    key={`s:${d.domain}`}
+                    className="tk-fg__wedge-sep"
+                    x1={layout.center.x}
+                    y1={layout.center.y}
+                    x2={x}
+                    y2={y}
+                    stroke={WEDGE_SEPARATOR_COLOR}
+                    strokeWidth={WEDGE_SEPARATOR_WIDTH}
+                    strokeLinecap="round"
                   />
-                )),
-              )}
+                );
+              })}
               {/* Edges under nodes so labels sit on top. */}
               {layout.edges.map((e, i) => {
                 const w = e.weight;

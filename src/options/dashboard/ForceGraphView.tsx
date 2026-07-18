@@ -90,6 +90,10 @@ interface Layout {
   domainNodes: DomainNode[];
   edges: PositionedEdge[];
   labels: DomainLabel[];
+  // Domain → list of its pages in outer-ring order, so the render
+  // pass can draw a membership line from each domain node to each
+  // of its pages without doing another O(n) group by.
+  membership: Map<string, PositionedNode[]>;
   center: { x: number; y: number };
   outerRadius: number;
   innerRadius: number;
@@ -179,15 +183,17 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
   const positioned: PositionedNode[] = [];
   const domainNodes: DomainNode[] = [];
   const labels: DomainLabel[] = [];
+  const membership = new Map<string, PositionedNode[]>();
   // Start at -π/2 so the first wedge is at the top of the ring.
   let angle = -Math.PI / 2;
 
   domainOrder.forEach((domain, idx) => {
     const bucket = byDomain.get(domain)!;
     const startAngle = angle;
+    const domainMembers: PositionedNode[] = [];
     for (const node of bucket) {
       const nodeAngle = angle + anglePerNode / 2;
-      positioned.push({
+      const p: PositionedNode = {
         id: node.page.id,
         x: cx + Math.cos(nodeAngle) * outerRadius,
         y: cy + Math.sin(nodeAngle) * outerRadius,
@@ -195,9 +201,12 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
         page: node,
         domain,
         angle: nodeAngle,
-      });
+      };
+      positioned.push(p);
+      domainMembers.push(p);
       angle += anglePerNode;
     }
+    membership.set(domain, domainMembers);
     const endAngle = angle;
     const midAngle = (startAngle + endAngle) / 2;
     const totalVisits = domainTotals[idx]!;
@@ -245,6 +254,7 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
     domainNodes,
     edges,
     labels,
+    membership,
     center: { x: cx, y: cy },
     outerRadius,
     innerRadius,
@@ -424,21 +434,26 @@ export const ForceGraphView: React.FC = () => {
                 strokeWidth={1}
                 strokeDasharray="2 4"
               />
-              {/* Thin spoke from each domain node outward to its wedge
-                  so the two rings read as one grouped structure. */}
-              {layout.domainNodes.map((d) => (
-                <line
-                  key={`${d.domain}-spoke`}
-                  className="tk-fg__ring"
-                  x1={layout.center.x + Math.cos(d.midAngle) * (layout.innerRadius + d.r)}
-                  y1={layout.center.y + Math.sin(d.midAngle) * (layout.innerRadius + d.r)}
-                  x2={layout.center.x + Math.cos(d.midAngle) * (layout.outerRadius - NODE_MAX_R - 2)}
-                  y2={layout.center.y + Math.sin(d.midAngle) * (layout.outerRadius - NODE_MAX_R - 2)}
-                  stroke="#e0e2e6"
-                  strokeWidth={1}
-                  opacity={0.55}
-                />
-              ))}
+              {/* One membership line from each domain node to each of
+                  its pages — makes the domain-to-pages grouping read
+                  as a sunburst per wedge. Deliberately faint so the
+                  navigated_from / opened_from transition edges stay
+                  the visual foreground; membership is context. */}
+              {layout.domainNodes.map((d) =>
+                (layout.membership.get(d.domain) ?? []).map((page) => (
+                  <line
+                    key={`m:${d.domain}:${page.id}`}
+                    className="tk-fg__ring"
+                    x1={d.x}
+                    y1={d.y}
+                    x2={page.x}
+                    y2={page.y}
+                    stroke="#d5d8dd"
+                    strokeWidth={1}
+                    opacity={0.5}
+                  />
+                )),
+              )}
               {/* Edges under nodes so labels sit on top. */}
               {layout.edges.map((e, i) => {
                 const w = e.weight;

@@ -279,12 +279,17 @@ export const ForceGraphView: React.FC = () => {
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
-  // Pan / zoom.
+  // Rotate / zoom. Drag rotates the whole layout around the center;
+  // wheel zooms about the pointer. No pan — the wedge layout is
+  // radial so there's nothing off-canvas to reach that panning would
+  // uncover, and rotate is a more useful gesture (bring a particular
+  // domain to the top / to a convenient reading angle).
   const [viewport, setViewport] = useState<{ x: number; y: number; k: number }>(
     { x: 0, y: 0, k: 1 },
   );
+  const [rotation, setRotation] = useState(0); // radians
   const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{ startX: number; startY: number; startVx: number; startVy: number } | null>(null);
+  const dragRef = useRef<{ startAngle: number; startRotation: number } | null>(null);
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -322,21 +327,41 @@ export const ForceGraphView: React.FC = () => {
     return computeLayout(graph, size.w, size.h);
   }, [graph, size.w, size.h]);
 
-  // Reset viewport when the layout regenerates (new range, new size).
+  // Reset when the layout regenerates (new range, new size).
   useEffect(() => {
     setViewport({ x: 0, y: 0, k: 1 });
+    setRotation(0);
   }, [rangeMs, size.w, size.h]);
 
+  // Screen-space center of the layout, factoring in zoom translate.
+  // Used to convert pointer positions into "angle around the display"
+  // for the rotate drag.
+  const layoutCenterScreen = useCallback((): { cx: number; cy: number } | null => {
+    const el = canvasRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return {
+      cx: rect.left + viewport.x + viewport.k * (size.w / 2),
+      cy: rect.top + viewport.y + viewport.k * (size.h / 2),
+    };
+  }, [viewport, size]);
+
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startVx: viewport.x, startVy: viewport.y };
+    const c = layoutCenterScreen();
+    if (!c) return;
+    const startAngle = Math.atan2(e.clientY - c.cy, e.clientX - c.cx);
+    dragRef.current = { startAngle, startRotation: rotation };
     setDragging(true);
     (e.target as Element).setPointerCapture?.(e.pointerId);
-  }, [viewport]);
+  }, [rotation, layoutCenterScreen]);
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    setViewport((v) => ({ ...v, x: drag.startVx + (e.clientX - drag.startX), y: drag.startVy + (e.clientY - drag.startY) }));
-  }, []);
+    const c = layoutCenterScreen();
+    if (!c) return;
+    const currentAngle = Math.atan2(e.clientY - c.cy, e.clientX - c.cx);
+    setRotation(drag.startRotation + (currentAngle - drag.startAngle));
+  }, [layoutCenterScreen]);
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     dragRef.current = null;
     setDragging(false);
@@ -400,7 +425,7 @@ export const ForceGraphView: React.FC = () => {
         <span style={{ fontSize: 12, opacity: 0.7 }}>
           {graph ? `${nodeCount} pages · ${domainCount} domains · ${edgeCount} transitions` : ''}
         </span>
-        <span style={{ fontSize: 12, opacity: 0.5, marginLeft: 'auto' }}>drag = pan · wheel = zoom · click a node = open</span>
+        <span style={{ fontSize: 12, opacity: 0.5, marginLeft: 'auto' }}>drag = rotate · wheel = zoom · click a node = open</span>
       </div>
       {error && <div className="tk-dash__error">{error}</div>}
       <div
@@ -418,7 +443,7 @@ export const ForceGraphView: React.FC = () => {
         )}
         {layout && (
           <svg width={size.w} height={size.h} style={styles.svg}>
-            <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
+            <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k}) rotate(${(rotation * 180) / Math.PI} ${layout.center.x} ${layout.center.y})`}>
               {/* Pie-slice fills — one per domain wedge, tinted with
                   the domain's color at low opacity so the transition
                   edges + nodes still dominate visually but the

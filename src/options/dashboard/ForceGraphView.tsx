@@ -81,9 +81,12 @@ interface PositionedEdge {
 
 interface DomainLabel {
   domain: string;
+  // Base position at rotation=0. The render pass re-computes the
+  // rotated position and matching text-anchor so labels stay
+  // horizontal as the display rotates around the center.
   x: number;
   y: number;
-  textAnchor: 'start' | 'middle' | 'end';
+  midAngle: number;
   count: number;
   color: ReturnType<typeof colorForDomain>;
 }
@@ -219,16 +222,11 @@ function computeLayout(graph: PageGraph, width: number, height: number): Layout 
     });
 
     const labelRadius = pageRadius + LABEL_RADIUS_OFFSET;
-    const lx = cx + Math.cos(midAngle) * labelRadius;
-    const ly = cy + Math.sin(midAngle) * labelRadius;
-    const cosMid = Math.cos(midAngle);
-    const textAnchor: DomainLabel['textAnchor'] =
-      cosMid > 0.3 ? 'start' : cosMid < -0.3 ? 'end' : 'middle';
     labels.push({
       domain,
-      x: lx,
-      y: ly,
-      textAnchor,
+      x: cx + Math.cos(midAngle) * labelRadius,
+      y: cy + Math.sin(midAngle) * labelRadius,
+      midAngle,
       count: bucket.length,
       color,
     });
@@ -515,22 +513,39 @@ export const ForceGraphView: React.FC = () => {
                   />
                 );
               })}
-              {layout.labels.map((l) => (
-                <text
-                  key={l.domain}
-                  className="tk-fg__domlabel"
-                  x={l.x}
-                  y={l.y}
-                  fontSize={11}
-                  fontFamily="ui-monospace, Menlo, monospace"
-                  fill="#4a4d52"
-                  textAnchor={l.textAnchor}
-                  dominantBaseline="middle"
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {l.domain} · {l.count}
-                </text>
-              ))}
+            </g>
+            {/* Labels live in a sibling group that gets translate +
+                scale but NOT the rotate — text stays horizontal at
+                any rotation. Position is recomputed from
+                (originalMidAngle + rotation), and textAnchor is
+                picked from the effective angle so labels always
+                read outward from the ring. */}
+            <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
+              {layout.labels.map((l) => {
+                const effAngle = l.midAngle + rotation;
+                const labelRadius = layout.pageRadius + LABEL_RADIUS_OFFSET;
+                const lx = layout.center.x + Math.cos(effAngle) * labelRadius;
+                const ly = layout.center.y + Math.sin(effAngle) * labelRadius;
+                const cosEff = Math.cos(effAngle);
+                const textAnchor: 'start' | 'middle' | 'end' =
+                  cosEff > 0.3 ? 'start' : cosEff < -0.3 ? 'end' : 'middle';
+                return (
+                  <text
+                    key={l.domain}
+                    className="tk-fg__domlabel"
+                    x={lx}
+                    y={ly}
+                    fontSize={11}
+                    fontFamily="ui-monospace, Menlo, monospace"
+                    fill="#4a4d52"
+                    textAnchor={textAnchor}
+                    dominantBaseline="middle"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {l.domain} · {l.count}
+                  </text>
+                );
+              })}
             </g>
           </svg>
         )}

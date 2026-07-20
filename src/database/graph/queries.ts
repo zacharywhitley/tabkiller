@@ -248,13 +248,23 @@ export async function visitsOnScreenBetween(
     collected.push(v);
   }
 
+  // Walk visits with at_time < tFrom looking for ones still on
+  // screen at tFrom (either ended_at == null, or ended_at >= tFrom).
+  // We do NOT early-break on the first closed visit encountered:
+  // that only holds within a single tab (visits chain), but across
+  // many tabs the streams interleave — one tab's closed visit sitting
+  // in the middle of the DESC walk would stop us from ever seeing
+  // other tabs' still-open older visits. Instead we scan and filter.
   const before = await g.visitsInAtTimeRange(
     Number.NEGATIVE_INFINITY,
     tFrom - 1,
     'desc',
   );
   for (const v of before) {
-    if (v.ended_at != null && v.ended_at < tFrom) break;
+    // ended_at is exclusive — a visit that ended AT tFrom is off
+    // screen during [tFrom, tTo] because the next visit takes over
+    // at that moment.
+    if (v.ended_at != null && v.ended_at <= tFrom) continue;
     if (seen.has(v.id)) continue;
     seen.add(v.id);
     collected.push(v);

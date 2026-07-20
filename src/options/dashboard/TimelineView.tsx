@@ -270,6 +270,15 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
       ? (page?.title || page?.normalized_url || `Page ${scopePageId.slice(0, 8)}`)
       : 'Last 60 minutes';
 
+  // Rendered-vs-fetched breakdown so silent filtering
+  // (reload drop, out-of-window drop) is visible in the toolbar.
+  // Otherwise "the timeline only shows one entry" is impossible to
+  // tell apart from "the query only returned one visit."
+  const fetchedCount = rows?.length ?? 0;
+  const reloadCount = rows?.filter((r) => r.visit.transition === 'reload').length ?? 0;
+  const renderedBars = layout.bars.length;
+  const renderedLanes = layout.lanes.length;
+
   return (
     <>
       <style>{darkOverrides}</style>
@@ -284,6 +293,10 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
           <span style={{ fontSize: 12, opacity: 0.7 }}>Global mode — last 60 min</span>
         )}
         <button type="button" className="tk-tl__btn" style={styles.btn} onClick={onNow}>Now</button>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>
+          {fetchedCount} fetched · {renderedBars} shown · {renderedLanes} lanes
+          {reloadCount > 0 ? ` · ${reloadCount} reload${reloadCount === 1 ? '' : 's'} dropped` : ''}
+        </span>
         <span style={{ fontSize: 12, opacity: 0.7, marginLeft: 'auto' }}>
           {new Date(viewWindow[0]).toLocaleString()} → {new Date(viewWindow[1]).toLocaleString()}
         </span>

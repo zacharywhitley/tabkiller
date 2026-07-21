@@ -776,67 +776,45 @@ export const GanttView: React.FC = () => {
                     <path d="M 0 0 L 10 5 L 0 10 z" fill="#666" />
                   </marker>
                 </defs>
-                {/* Session boundaries — solid blue rule at started_at,
-                    dashed rule at ended_at. Chip below the axis names
-                    the session by its tags / title. Uses the same
-                    timeToX math as the layout so lines land exactly
-                    at the temporal instant. */}
+                {/* One rule per session, at started_at. End rules are
+                    redundant — the next session's start sits where
+                    this session ends. */}
                 {(() => {
                   const usable = Math.max(200, layout.width - 2 * CANVAS_PADDING);
                   const range = Math.max(1, windowRange[1] - windowRange[0]);
                   const timeToX = (t: number) =>
                     CANVAS_PADDING + ((t - windowRange[0]) / range) * usable;
                   return sessions.map((s) => {
-                    const startX = timeToX(s.session.started_at);
                     const startInView =
                       s.session.started_at >= windowRange[0] &&
                       s.session.started_at <= windowRange[1];
-                    const endInView = s.session.ended_at != null &&
-                      s.session.ended_at >= windowRange[0] &&
-                      s.session.ended_at <= windowRange[1];
-                    const endX = s.session.ended_at != null
-                      ? timeToX(s.session.ended_at) : null;
+                    if (!startInView) return null;
+                    const startX = timeToX(s.session.started_at);
                     const chip = s.tags.map((t) => t.label || t.slug).join(', ')
                       || s.session.title
                       || `session ${s.session.id.slice(0, 6)}`;
                     return (
                       <g key={`session:${s.session.id}`}>
-                        {startInView && (
-                          <>
-                            <line
-                              className="tk-gantt__session-start"
-                              x1={startX} x2={startX}
-                              y1={AXIS_HEIGHT}
-                              y2={layout.height}
-                              stroke="#7ea3d9"
-                              strokeWidth={1.5}
-                              opacity={0.55}
-                            />
-                            <text
-                              className="tk-gantt__session-chip"
-                              x={startX + 4}
-                              y={AXIS_HEIGHT + 12}
-                              fontSize={10}
-                              fill="#4a76c4"
-                              fontFamily="ui-monospace, Menlo, monospace"
-                              style={{ pointerEvents: 'none' }}
-                            >
-                              ▸ {chip}
-                            </text>
-                          </>
-                        )}
-                        {endInView && endX != null && (
-                          <line
-                            className="tk-gantt__session-end"
-                            x1={endX} x2={endX}
-                            y1={AXIS_HEIGHT}
-                            y2={layout.height}
-                            stroke="#7ea3d9"
-                            strokeWidth={1.5}
-                            strokeDasharray="3 3"
-                            opacity={0.45}
-                          />
-                        )}
+                        <line
+                          className="tk-gantt__session-start"
+                          x1={startX} x2={startX}
+                          y1={AXIS_HEIGHT}
+                          y2={layout.height}
+                          stroke="#7ea3d9"
+                          strokeWidth={1.5}
+                          opacity={0.5}
+                        />
+                        <text
+                          className="tk-gantt__session-chip"
+                          x={startX + 4}
+                          y={AXIS_HEIGHT + 12}
+                          fontSize={10}
+                          fill="#4a76c4"
+                          fontFamily="ui-monospace, Menlo, monospace"
+                          style={{ pointerEvents: 'none' }}
+                        >
+                          ▸ {chip}
+                        </text>
                       </g>
                     );
                   });

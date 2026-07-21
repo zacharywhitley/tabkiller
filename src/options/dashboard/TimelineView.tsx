@@ -347,63 +347,42 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
             onMouseLeave={onMouseUp}
             data-testid="tk-tl-svg"
           >
-            {/* Session boundary rules — drawn under the axis so the
-                axis line and ticks sit on top of them. Solid rule at
-                started_at, dashed rule at ended_at (dashed marks the
-                inferred boundary; still-open sessions have no
-                closing rule). A tag/title chip sits just below the
-                axis so the session is identifiable by name. */}
+            {/* One rule per session, at started_at. End rules are
+                redundant — the next session's start rule sits
+                where this session ends, so drawing both just doubles
+                the visual noise. A tag/title chip sits just below
+                the axis so the session is identifiable by name. */}
             {sessions.map((s) => {
-              const startX = layout.timeToX(s.session.started_at);
               const startInView =
                 s.session.started_at >= viewWindow[0] &&
                 s.session.started_at <= viewWindow[1];
-              const endX = s.session.ended_at != null
-                ? layout.timeToX(s.session.ended_at) : null;
-              const endInView = s.session.ended_at != null &&
-                s.session.ended_at >= viewWindow[0] &&
-                s.session.ended_at <= viewWindow[1];
+              if (!startInView) return null;
+              const startX = layout.timeToX(s.session.started_at);
               const chip = s.tags.map((t) => t.label || t.slug).join(', ')
                 || s.session.title
                 || `session ${s.session.id.slice(0, 6)}`;
               return (
                 <g key={`session:${s.session.id}`}>
-                  {startInView && (
-                    <>
-                      <line
-                        className="tk-tl__session-start"
-                        x1={startX} x2={startX}
-                        y1={AXIS_HEIGHT}
-                        y2={layout.canvas.height}
-                        stroke="#7ea3d9"
-                        strokeWidth={1.5}
-                        opacity={0.55}
-                      />
-                      <text
-                        className="tk-tl__session-chip"
-                        x={startX + 4}
-                        y={AXIS_HEIGHT + 12}
-                        fontSize={10}
-                        fill="#4a76c4"
-                        fontFamily="ui-monospace, Menlo, monospace"
-                        style={{ pointerEvents: 'none' }}
-                      >
-                        ▸ {chip}
-                      </text>
-                    </>
-                  )}
-                  {endInView && endX != null && (
-                    <line
-                      className="tk-tl__session-end"
-                      x1={endX} x2={endX}
-                      y1={AXIS_HEIGHT}
-                      y2={layout.canvas.height}
-                      stroke="#7ea3d9"
-                      strokeWidth={1.5}
-                      strokeDasharray="3 3"
-                      opacity={0.45}
-                    />
-                  )}
+                  <line
+                    className="tk-tl__session-start"
+                    x1={startX} x2={startX}
+                    y1={AXIS_HEIGHT}
+                    y2={layout.canvas.height}
+                    stroke="#7ea3d9"
+                    strokeWidth={1.5}
+                    opacity={0.5}
+                  />
+                  <text
+                    className="tk-tl__session-chip"
+                    x={startX + 4}
+                    y={AXIS_HEIGHT + 12}
+                    fontSize={10}
+                    fill="#4a76c4"
+                    fontFamily="ui-monospace, Menlo, monospace"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    ▸ {chip}
+                  </text>
                 </g>
               );
             })}

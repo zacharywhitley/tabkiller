@@ -82,6 +82,42 @@ export class GraphStore {
   }
 
   /**
+   * Delete a single node by id. Same transactional pattern as
+   * `writeBatch`. Used by one-shot migrations that need to purge stale
+   * records the normal capture flow has no way to reach. Silent when
+   * the id does not exist — IDB `delete` treats that as a no-op.
+   */
+  async deleteNode(id: string): Promise<void> {
+    const tx = this.db.transaction(STORE_NAMES.GRAPH_NODES, 'readwrite');
+    try {
+      tx.objectStore(STORE_NAMES.GRAPH_NODES).delete(id);
+    } catch (err) {
+      tx.abort();
+      await awaitTransaction(tx).catch(() => undefined);
+      throw err;
+    }
+    await awaitTransaction(tx);
+  }
+
+  /**
+   * Delete a single edge by id. See `deleteNode` for the transactional
+   * contract; both target one store each, so they're kept separate
+   * rather than sharing a two-store transaction (which would upgrade
+   * unrelated reads to needless locks).
+   */
+  async deleteEdge(id: string): Promise<void> {
+    const tx = this.db.transaction(STORE_NAMES.GRAPH_EDGES, 'readwrite');
+    try {
+      tx.objectStore(STORE_NAMES.GRAPH_EDGES).delete(id);
+    } catch (err) {
+      tx.abort();
+      await awaitTransaction(tx).catch(() => undefined);
+      throw err;
+    }
+    await awaitTransaction(tx);
+  }
+
+  /**
    * Atomic multi-write: a node and any edges captured from the same
    * upstream event go in one transaction so a mid-batch crash cannot
    * leave dangling edges. A synchronous throw from `put` (e.g. a record

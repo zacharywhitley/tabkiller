@@ -21,12 +21,32 @@
  */
 
 import { SessionEmitter, DEFAULT_IDLE_GAP_MS } from '../SessionEmitter';
+import type { SessionPersistence } from '../SessionEmitter';
 import type { BrowsingEvent } from '../../../shared/types';
 
 class FakeOutbox {
   events: BrowsingEvent[] = [];
   async storeEvent(event: BrowsingEvent): Promise<void> {
     this.events.push(event);
+  }
+}
+
+class MemoryPersistence implements SessionPersistence {
+  stored: Parameters<SessionPersistence['save']>[0] | null = null;
+  loadCalls = 0;
+  saveCalls = 0;
+  clearCalls = 0;
+  async load() {
+    this.loadCalls++;
+    return this.stored;
+  }
+  async save(session: Parameters<SessionPersistence['save']>[0]) {
+    this.saveCalls++;
+    this.stored = { ...session };
+  }
+  async clear() {
+    this.clearCalls++;
+    this.stored = null;
   }
 }
 
@@ -163,6 +183,97 @@ describe('SessionEmitter', () => {
 
   it('DEFAULT_IDLE_GAP_MS is 15 minutes', () => {
     expect(DEFAULT_IDLE_GAP_MS).toBe(15 * 60 * 1000);
+  });
+
+  it('start() resumes a persisted session instead of emitting a new session_started', async () => {
+    // Simulates the MV3 SW wake path: SessionEmitter was
+    // instantiated, its constructor didn't load anything (no
+    // in-memory state), but persistence already has a session from
+    // a previous wake. start() must adopt that session — no
+    // session_started event emitted, and currentSessionEventId
+    // returns the persisted id.
+    const outbox = new FakeOutbox();
+    const persistence = new MemoryPersistence();
+    persistence.stored = {
+      eventId: 'session_restored_abc',
+      startedAt: 900_000,
+      lastActivityAt: 950_000,
+      detectedBy: 'idle',
+    };
+    const emitter = new SessionEmitter({
+      outbox: outbox as any,
+      now: () => 1_000_000,
+      persistence,
+    });
+
+    const resumed = await emitter.start('session_restore');
+    expect(resumed).toBe('session_restored_abc');
+    expect(outbox.events).toHaveLength(0);
+    expect(emitter.currentSessionEventId()).toBe('session_restored_abc');
+  });
+
+  it('start() with no persisted session falls back to opening a fresh one', async () => {
+    const outbox = new FakeOutbox();
+    const persistence = new MemoryPersistence();
+    // persistence.stored stays null
+    const emitter = new SessionEmitter({
+      outbox: outbox as any,
+      now: () => 1_000_000,
+      persistence,
+    });
+
+    await emitter.start('session_restore');
+    expect(outbox.events).toHaveLength(1);
+    expect(outbox.events[0].type).toBe('session_started');
+    // openNew() writes to persistence so the next wake can resume.
+    expect(persistence.stored).not.toBeNull();
+    expect(persistence.stored?.eventId).toBe(outbox.events[0].id);
+  });
+
+  it('endCurrent() clears persistence so the next start() opens a fresh session', async () => {
+    const outbox = new FakeOutbox();
+    const persistence = new MemoryPersistence();
+    const emitter = new SessionEmitter({
+      outbox: outbox as any,
+      now: () => 1_000_000,
+      persistence,
+    });
+
+    await emitter.start('session_restore');
+    expect(persistence.stored).not.toBeNull();
+    await emitter.endManual(1_000_500);
+    expect(persistence.stored).toBeNull();
+    expect(persistence.clearCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  it('noteActivity debounces persistence writes', async () => {
+    // Every noteActivity() call inside the debounce window should
+    // update in-memory lastActivityAt but not touch persistence.
+    // Once the debounce window elapses, the next noteActivity
+    // triggers exactly one save.
+    let clock = 1_000_000;
+    const outbox = new FakeOutbox();
+    const persistence = new MemoryPersistence();
+    const emitter = new SessionEmitter({
+      outbox: outbox as any,
+      now: () => clock,
+      persistence,
+      activityPersistDebounceMs: 30_000,
+    });
+    await emitter.start('session_restore'); // save #1 (from openNew)
+    expect(persistence.saveCalls).toBe(1);
+
+    // 10s of activity — within debounce window.
+    for (let i = 0; i < 5; i++) {
+      clock += 2_000;
+      await emitter.noteActivity(clock);
+    }
+    expect(persistence.saveCalls).toBe(1);
+
+    // 30s later — hits the debounce threshold.
+    clock += 30_000;
+    await emitter.noteActivity(clock);
+    expect(persistence.saveCalls).toBe(2);
   });
 
   it('a second start() closes the outstanding session before opening a new one', async () => {

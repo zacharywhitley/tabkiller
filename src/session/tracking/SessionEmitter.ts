@@ -43,6 +43,18 @@ export type SessionDetectedBy =
   | 'manual'
   | 'session_restore';
 
+/**
+ * Persistence for the currently-open session across service-worker
+ * teardowns. Injectable so tests can substitute an in-memory impl
+ * (or `null` to disable persistence entirely and get the pre-fix
+ * behaviour).
+ */
+export interface SessionPersistence {
+  load(): Promise<CurrentSession | null>;
+  save(session: CurrentSession): Promise<void>;
+  clear(): Promise<void>;
+}
+
 export interface SessionEmitterOptions {
   outbox: LocalEventStore;
   /** Injectable clock for deterministic tests. Defaults to Date.now. */
@@ -51,6 +63,17 @@ export interface SessionEmitterOptions {
   idleGapMs?: number;
   /** Callback invoked after every emit so callers can drain the outbox. */
   onEmit?: () => void;
+  /**
+   * Persistence for the current session across SW wakes. Omit for tests
+   * that want the pre-persistence behaviour; the SW wires the
+   * chrome.storage.local-backed impl exported below.
+   */
+  persistence?: SessionPersistence | null;
+  /**
+   * Debounce for save() calls fired from noteActivity(). Defaults to 30s
+   * so a tight loop of capture events doesn't hammer chrome.storage.
+   */
+  activityPersistDebounceMs?: number;
 }
 
 interface CurrentSession {
@@ -59,6 +82,48 @@ interface CurrentSession {
   lastActivityAt: number;
   detectedBy: SessionDetectedBy;
 }
+
+const DEFAULT_ACTIVITY_PERSIST_DEBOUNCE_MS = 30 * 1000;
+
+/**
+ * chrome.storage.local-backed session persistence. Used by the
+ * service worker so wake-up adopts the in-flight session instead of
+ * opening a new session_restore session on every wake.
+ */
+export const chromeStorageSessionPersistence: SessionPersistence = {
+  async load() {
+    try {
+      const res = await chrome.storage.local.get('tk:currentSession');
+      const val = (res as Record<string, unknown>)['tk:currentSession'];
+      if (
+        val && typeof val === 'object' &&
+        typeof (val as CurrentSession).eventId === 'string' &&
+        typeof (val as CurrentSession).startedAt === 'number' &&
+        typeof (val as CurrentSession).lastActivityAt === 'number'
+      ) {
+        return val as CurrentSession;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+  async save(session: CurrentSession) {
+    try {
+      await chrome.storage.local.set({ 'tk:currentSession': session });
+    } catch {
+      // storage failure is non-fatal — we lose persistence
+      // correctness this wake but keep working.
+    }
+  },
+  async clear() {
+    try {
+      await chrome.storage.local.remove('tk:currentSession');
+    } catch {
+      // ignore
+    }
+  },
+};
 
 function generateEventId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -69,6 +134,11 @@ export class SessionEmitter {
   private readonly now: () => number;
   private readonly idleGapMs: number;
   private readonly onEmit: () => void;
+  private readonly persistence: SessionPersistence | null;
+  private readonly activityPersistDebounceMs: number;
+  // Last time we persisted lastActivityAt; keeps the noteActivity
+  // hot path from hammering chrome.storage on every capture event.
+  private lastPersistAt = 0;
 
   private currentSession: CurrentSession | null = null;
 
@@ -77,6 +147,9 @@ export class SessionEmitter {
     this.now = options.now ?? Date.now;
     this.idleGapMs = options.idleGapMs ?? DEFAULT_IDLE_GAP_MS;
     this.onEmit = options.onEmit ?? (() => {});
+    this.persistence = options.persistence ?? null;
+    this.activityPersistDebounceMs =
+      options.activityPersistDebounceMs ?? DEFAULT_ACTIVITY_PERSIST_DEBOUNCE_MS;
   }
 
   /**
@@ -84,8 +157,25 @@ export class SessionEmitter {
    * `detected_by = 'session_restore'`. Safe to call more than once —
    * the second call closes the first session cleanly then opens a new
    * one.
+   *
+   * If a `persistence` was supplied and it has a stored session, we
+   * ADOPT it as our currentSession without emitting a new
+   * session_started event. This is the whole point of the persistence
+   * layer: MV3 tears down the service worker constantly and this
+   * would otherwise open a session_restore session on every wake.
+   * The natural noteActivity() path handles the idle-gap case if the
+   * SW was down long enough — it closes the resumed session at its
+   * lastActivityAt and opens a new one with detected_by='idle'.
    */
   async start(detectedBy: SessionDetectedBy = 'session_restore'): Promise<string> {
+    if (this.persistence) {
+      const resumed = await this.persistence.load();
+      if (resumed) {
+        this.currentSession = { ...resumed };
+        this.lastPersistAt = this.now();
+        return resumed.eventId;
+      }
+    }
     if (this.currentSession) {
       await this.endCurrent(this.now());
     }
@@ -117,6 +207,16 @@ export class SessionEmitter {
     }
 
     this.currentSession.lastActivityAt = timestamp;
+    // Debounced persistence — a busy capture stream would otherwise
+    // hit chrome.storage on every event. 30s of stale lastActivityAt
+    // is inconsequential vs. a 15-minute idle threshold.
+    if (
+      this.persistence &&
+      timestamp - this.lastPersistAt >= this.activityPersistDebounceMs
+    ) {
+      this.lastPersistAt = timestamp;
+      void this.persistence.save({ ...this.currentSession });
+    }
   }
 
   /**
@@ -155,6 +255,10 @@ export class SessionEmitter {
       lastActivityAt: timestamp,
       detectedBy,
     };
+    if (this.persistence) {
+      this.lastPersistAt = timestamp;
+      void this.persistence.save({ ...this.currentSession });
+    }
     this.onEmit();
     return eventId;
   }
@@ -172,6 +276,9 @@ export class SessionEmitter {
     };
     await this.outbox.storeEvent(event);
     this.currentSession = null;
+    if (this.persistence) {
+      void this.persistence.clear();
+    }
     this.onEmit();
   }
 }

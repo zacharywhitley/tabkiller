@@ -37,7 +37,10 @@ import {
 } from '../shared/types';
 import { LocalEventStore } from '../storage/LocalEventStore';
 import { FocusEmitter, FocusTransition } from '../session/tracking/FocusEmitter';
-import { SessionEmitter } from '../session/tracking/SessionEmitter';
+import {
+  SessionEmitter,
+  chromeStorageSessionPersistence,
+} from '../session/tracking/SessionEmitter';
 import { GraphStore } from '../database/graph/store';
 import { GraphIngest, GRAPH_INGEST_ALARM_NAME } from '../database/graph/ingest';
 import { SessionStorageEngine } from '../session/storage/SessionStorageEngine';
@@ -126,7 +129,12 @@ class BackgroundService {
     });
     this.sessionEmitter = new SessionEmitter({
       outbox: this.outbox,
-      onEmit: () => this.graphIngest?.drainSoon()
+      onEmit: () => this.graphIngest?.drainSoon(),
+      // Persist the current session across SW wakes. Without this the
+      // in-memory currentSession is lost every time MV3 tears down
+      // the SW, and start('session_restore') on wake opens a fresh
+      // session — flooding the graph with machine-noise boundaries.
+      persistence: chromeStorageSessionPersistence,
     });
   }
 

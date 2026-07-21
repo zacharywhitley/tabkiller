@@ -885,6 +885,15 @@ export async function sessionsOverlappingWindow(
   const sessions = await g.nodesOfType<SessionNode>('Session');
   const out: SessionInWindow[] = [];
   for (const s of sessions) {
+    // Skip 'session_restore' sessions. Under MV3 the service worker
+    // is woken constantly (alarms, messages, capture events) and
+    // SessionEmitter.start() runs on every wake — its in-memory
+    // "currentSession" is gone by then, so it opens a fresh one
+    // every time. That produces a dense stripe of machine-noise
+    // boundaries with no user-perceptible event behind them.
+    // Sessions from real signals — 'idle' gap, 'domain_shift',
+    // 'manual' — are the ones that mark actual context changes.
+    if (s.detected_by === 'session_restore') continue;
     const start = s.started_at;
     const end = s.ended_at ?? now;
     if (start > tTo || end < tFrom) continue;

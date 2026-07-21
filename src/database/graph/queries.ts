@@ -388,8 +388,14 @@ export async function recentSessions(
   if (limit <= 0) return [];
 
   const all = await g.nodesOfType<SessionNode>('Session');
-  all.sort((a, b) => b.started_at - a.started_at);
-  const top = all.slice(0, limit);
+  // Drop 'session_restore' sessions for the same reason
+  // sessionsOverlappingWindow does — see the comment there. This is a
+  // session-per-row display surface, so machine-noise sessions from
+  // stale SW-wake data (pre-cd18cf4) would clutter the list without
+  // representing a real user-perceptible context change.
+  const filtered = all.filter((s) => s.detected_by !== 'session_restore');
+  filtered.sort((a, b) => b.started_at - a.started_at);
+  const top = filtered.slice(0, limit);
 
   const out: RecentSessionRow[] = [];
   for (const session of top) {

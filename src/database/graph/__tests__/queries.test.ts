@@ -440,6 +440,32 @@ describe('recentSessions', () => {
     expect(await recentSessions(store, 0)).toEqual([]);
     expect(await recentSessions(store, -5)).toEqual([]);
   });
+
+  it("filters 'session_restore' sessions — SW-wake noise, not user-perceptible", async () => {
+    // Same rationale as sessionsOverlappingWindow. Insert a session_restore
+    // session that would otherwise sort to the top and confirm it does
+    // NOT appear in the results.
+    const { store } = await freshLoadedStore();
+    const noiseId = 's_noise';
+    await store.writeBatch({
+      nodes: [
+        {
+          id: noiseId,
+          type: 'Session',
+          recorded_at: T.retro_tag + 1000,
+          started_at: T.retro_tag + 1000,
+          ended_at: T.retro_tag + 2000,
+          detected_by: 'session_restore',
+          title: null,
+        },
+      ],
+      edges: [],
+    });
+
+    const rows = await recentSessions(store, 10);
+    expect(rows.map((r) => r.session.id)).toEqual(['s2', 's1']);
+    expect(rows.some((r) => r.session.id === noiseId)).toBe(false);
+  });
 });
 
 // ---- 8. visitsInSession (dashboard timeline scoped mode) ----

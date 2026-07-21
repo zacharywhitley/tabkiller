@@ -7,7 +7,7 @@
  * queries can be validated against the spike's expected outputs.
  *
  * Narrative (all times same day):
- *   09:00:00  window w1 + tab t1 open, session s1 starts (session_restore)
+ *   09:00:00  window w1 + tab t1 open, session s1 starts (manual)
  *   09:00:01  v1: hn.com (typed) in t1
  *   09:03:00  click link -> v2: github.com/some/repo (link, navigated_from v1)
  *   09:03:15  right-click "open in new tab" from HN -> t2 opens, v3 in t2
@@ -203,7 +203,11 @@ export function buildFixture(): { nodes: AnyNode[]; edges: AnyEdge[] } {
                            T.v6_start, T.v6_start, 1);
 
   // Sessions
-  const s1 = session('s1', T.s1_start, T.s1_end, 'session_restore');
+  // s1's detected_by is 'manual' rather than 'session_restore' so display
+  // primitives that filter session_restore (recentSessions,
+  // sessionsOverlappingWindow) still return s1. See the comment on
+  // sessionsOverlappingWindow for why session_restore is dropped.
+  const s1 = session('s1', T.s1_start, T.s1_end, 'manual');
   const s2 = session('s2', T.s2_start, T.s2_end, 'idle');
 
   // Window + tabs

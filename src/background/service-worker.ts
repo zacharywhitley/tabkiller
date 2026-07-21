@@ -43,6 +43,7 @@ import {
 } from '../session/tracking/SessionEmitter';
 import { GraphStore } from '../database/graph/store';
 import { GraphIngest, GRAPH_INGEST_ALARM_NAME } from '../database/graph/ingest';
+import { runSessionRestoreCleanup } from '../database/graph/migrations';
 import { SessionStorageEngine } from '../session/storage/SessionStorageEngine';
 import { Shipper } from './shipping/Shipper';
 
@@ -181,6 +182,17 @@ class BackgroundService {
         const graph = new GraphStore(this.sessionStorageEngine.getDatabase());
         this.graphIngest = new GraphIngest({ outbox: this.outbox, graph });
         await this.graphIngest.initialize();
+
+        // One-shot cleanup for stale session_restore sessions left in
+        // the graph before cd18cf4 taught the SessionEmitter to persist
+        // across SW wakes. Guarded by a version marker in
+        // chrome.storage.local so it runs at most once per install.
+        // Fail-open: a throw here must not block SW boot.
+        try {
+          await runSessionRestoreCleanup(graph, chrome.storage.local);
+        } catch (error) {
+          console.warn('session_restore cleanup migration failed:', error);
+        }
       } catch (error) {
         console.warn('Graph ingest initialization failed:', error);
       }

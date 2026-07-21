@@ -19,9 +19,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { openGraphStoreForDebug } from '../debug/index';
 import {
+  sessionsOverlappingWindow,
   visitsInSession,
   visitsOnScreenBetween,
 } from '../../database/graph/queries';
+import type { SessionInWindow } from '../../database/graph/queries';
 import type { GraphStore } from '../../database/graph/store';
 import type { PageNode, SessionNode, TabNode, VisitNode } from '../../database/graph/types';
 import {
@@ -135,6 +137,8 @@ const darkOverrides = `
     .tk-tl__axis-label { fill: #b0b3b7 !important; }
     .tk-tl__lane-line { stroke: #35383d !important; }
     .tk-tl__lane-label { fill: #a8abb0 !important; }
+    .tk-tl__session-start, .tk-tl__session-end { stroke: #4b8fed !important; }
+    .tk-tl__session-chip { fill: #7ea3d9 !important; }
     .tk-tl__btn { border-color: #55575c !important; }
   }
 `;
@@ -154,6 +158,7 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
   const [hover, setHover] = useState<HoverState | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 1000, h: 400 });
+  const [sessions, setSessions] = useState<SessionInWindow[]>([]);
   const dragRef = useRef<{ startX: number; startFrom: number; startTo: number } | null>(null);
 
   useLayoutEffect(() => {
@@ -191,6 +196,23 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
     })();
     return () => { cancelled = true; };
   }, [scopeSessionId, scopePageId]);
+
+  // Session boundaries that intersect the current view window.
+  // Re-queried when the window pans/zooms; simple linear scan on
+  // Session nodes so it doesn't stall the render.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const g = await openGraphStoreForDebug();
+        const rows = await sessionsOverlappingWindow(g, viewWindow[0], viewWindow[1]);
+        if (!cancelled) setSessions(rows);
+      } catch {
+        // Non-fatal — sessions are decoration, not primary content.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [viewWindow]);
 
   const layout = useMemo(() => layoutTimeline({
     rows: rows ?? [],
@@ -325,6 +347,67 @@ export const TimelineView: React.FC<Props> = ({ scopeSessionId, scopePageId, onC
             onMouseLeave={onMouseUp}
             data-testid="tk-tl-svg"
           >
+            {/* Session boundary rules — drawn under the axis so the
+                axis line and ticks sit on top of them. Solid rule at
+                started_at, dashed rule at ended_at (dashed marks the
+                inferred boundary; still-open sessions have no
+                closing rule). A tag/title chip sits just below the
+                axis so the session is identifiable by name. */}
+            {sessions.map((s) => {
+              const startX = layout.timeToX(s.session.started_at);
+              const startInView =
+                s.session.started_at >= viewWindow[0] &&
+                s.session.started_at <= viewWindow[1];
+              const endX = s.session.ended_at != null
+                ? layout.timeToX(s.session.ended_at) : null;
+              const endInView = s.session.ended_at != null &&
+                s.session.ended_at >= viewWindow[0] &&
+                s.session.ended_at <= viewWindow[1];
+              const chip = s.tags.map((t) => t.label || t.slug).join(', ')
+                || s.session.title
+                || `session ${s.session.id.slice(0, 6)}`;
+              return (
+                <g key={`session:${s.session.id}`}>
+                  {startInView && (
+                    <>
+                      <line
+                        className="tk-tl__session-start"
+                        x1={startX} x2={startX}
+                        y1={AXIS_HEIGHT}
+                        y2={layout.canvas.height}
+                        stroke="#7ea3d9"
+                        strokeWidth={1.5}
+                        opacity={0.55}
+                      />
+                      <text
+                        className="tk-tl__session-chip"
+                        x={startX + 4}
+                        y={AXIS_HEIGHT + 12}
+                        fontSize={10}
+                        fill="#4a76c4"
+                        fontFamily="ui-monospace, Menlo, monospace"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        ▸ {chip}
+                      </text>
+                    </>
+                  )}
+                  {endInView && endX != null && (
+                    <line
+                      className="tk-tl__session-end"
+                      x1={endX} x2={endX}
+                      y1={AXIS_HEIGHT}
+                      y2={layout.canvas.height}
+                      stroke="#7ea3d9"
+                      strokeWidth={1.5}
+                      strokeDasharray="3 3"
+                      opacity={0.45}
+                    />
+                  )}
+                </g>
+              );
+            })}
+
             <line
               className="tk-tl__axis-line"
               x1={0}

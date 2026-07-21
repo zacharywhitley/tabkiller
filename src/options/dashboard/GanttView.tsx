@@ -16,8 +16,12 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { openGraphStoreForDebug } from '../debug/index';
-import { openTabsGrouped, windowsWithVisitsBetween } from '../../database/graph/queries';
-import type { WindowTabVisitWindow } from '../../database/graph/queries';
+import {
+  openTabsGrouped,
+  sessionsOverlappingWindow,
+  windowsWithVisitsBetween,
+} from '../../database/graph/queries';
+import type { SessionInWindow, WindowTabVisitWindow } from '../../database/graph/queries';
 import type { PageNode, TabNode, VisitNode, WindowNode } from '../../database/graph/types';
 import { colorForDomain, hostnameOf } from './domainColor';
 import type { GraphStore } from '../../database/graph/store';
@@ -255,6 +259,8 @@ const darkOverrides = `
     .tk-gantt__lane-label { fill: #a8abb0 !important; }
     .tk-gantt__winlabel { fill: #dadde0 !important; }
     .tk-gantt__winband { fill: rgba(255,255,255,0.03) !important; }
+    .tk-gantt__session-start, .tk-gantt__session-end { stroke: #4b8fed !important; }
+    .tk-gantt__session-chip { fill: #7ea3d9 !important; }
   }
 `;
 
@@ -314,6 +320,24 @@ export const GanttView: React.FC = () => {
     return [t - DEFAULT_WINDOW_MS, t];
   });
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [sessions, setSessions] = useState<SessionInWindow[]>([]);
+
+  // Session boundaries overlapping the full data window. Refreshes
+  // whenever the range changes; scroll-based visible-window changes
+  // don't re-query since we already have all overlapping sessions.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const g = await openGraphStoreForDebug();
+        const rows = await sessionsOverlappingWindow(g, windowRange[0], windowRange[1]);
+        if (!cancelled) setSessions(rows);
+      } catch {
+        // Session decoration is non-critical.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [windowRange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -752,6 +776,72 @@ export const GanttView: React.FC = () => {
                     <path d="M 0 0 L 10 5 L 0 10 z" fill="#666" />
                   </marker>
                 </defs>
+                {/* Session boundaries — solid blue rule at started_at,
+                    dashed rule at ended_at. Chip below the axis names
+                    the session by its tags / title. Uses the same
+                    timeToX math as the layout so lines land exactly
+                    at the temporal instant. */}
+                {(() => {
+                  const usable = Math.max(200, layout.width - 2 * CANVAS_PADDING);
+                  const range = Math.max(1, windowRange[1] - windowRange[0]);
+                  const timeToX = (t: number) =>
+                    CANVAS_PADDING + ((t - windowRange[0]) / range) * usable;
+                  return sessions.map((s) => {
+                    const startX = timeToX(s.session.started_at);
+                    const startInView =
+                      s.session.started_at >= windowRange[0] &&
+                      s.session.started_at <= windowRange[1];
+                    const endInView = s.session.ended_at != null &&
+                      s.session.ended_at >= windowRange[0] &&
+                      s.session.ended_at <= windowRange[1];
+                    const endX = s.session.ended_at != null
+                      ? timeToX(s.session.ended_at) : null;
+                    const chip = s.tags.map((t) => t.label || t.slug).join(', ')
+                      || s.session.title
+                      || `session ${s.session.id.slice(0, 6)}`;
+                    return (
+                      <g key={`session:${s.session.id}`}>
+                        {startInView && (
+                          <>
+                            <line
+                              className="tk-gantt__session-start"
+                              x1={startX} x2={startX}
+                              y1={AXIS_HEIGHT}
+                              y2={layout.height}
+                              stroke="#7ea3d9"
+                              strokeWidth={1.5}
+                              opacity={0.55}
+                            />
+                            <text
+                              className="tk-gantt__session-chip"
+                              x={startX + 4}
+                              y={AXIS_HEIGHT + 12}
+                              fontSize={10}
+                              fill="#4a76c4"
+                              fontFamily="ui-monospace, Menlo, monospace"
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              ▸ {chip}
+                            </text>
+                          </>
+                        )}
+                        {endInView && endX != null && (
+                          <line
+                            className="tk-gantt__session-end"
+                            x1={endX} x2={endX}
+                            y1={AXIS_HEIGHT}
+                            y2={layout.height}
+                            stroke="#7ea3d9"
+                            strokeWidth={1.5}
+                            strokeDasharray="3 3"
+                            opacity={0.45}
+                          />
+                        )}
+                      </g>
+                    );
+                  });
+                })()}
+
                 {layout.ticks.map((t) => (
                   <text
                     key={t.x}

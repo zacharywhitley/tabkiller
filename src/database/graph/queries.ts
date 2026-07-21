@@ -863,6 +863,42 @@ export async function windowsWithVisitsBetween(
   return result;
 }
 
+// ---- Sessions overlapping a time window (dashboard timeline markers) ----
+//
+// Returns every SessionNode whose lifetime [started_at, ended_at ?? now]
+// intersects [tFrom, tTo], plus each session's tags. Used by the
+// Timeline and Gantt views to draw session-boundary rules at the exact
+// moment browsing sessions began or ended, so users can see where their
+// research/work/etc. sessions sit against the visit stream.
+
+export interface SessionInWindow {
+  session: SessionNode;
+  tags: TagNode[];
+}
+
+export async function sessionsOverlappingWindow(
+  g: GraphStore,
+  tFrom: number,
+  tTo: number,
+): Promise<SessionInWindow[]> {
+  const now = Date.now();
+  const sessions = await g.nodesOfType<SessionNode>('Session');
+  const out: SessionInWindow[] = [];
+  for (const s of sessions) {
+    const start = s.started_at;
+    const end = s.ended_at ?? now;
+    if (start > tTo || end < tFrom) continue;
+    const tags: TagNode[] = [];
+    for (const te of await g.outPoint(s.id, 'tagged_with')) {
+      const tag = await g.getNode<TagNode>(te.to_id);
+      if (tag) tags.push(tag);
+    }
+    out.push({ session: s, tags });
+  }
+  out.sort((a, b) => a.session.started_at - b.session.started_at);
+  return out;
+}
+
 // ---- Page-to-page transition graph (time-agnostic) ----
 //
 // Aggregates every navigated_from and opened_from edge across the
